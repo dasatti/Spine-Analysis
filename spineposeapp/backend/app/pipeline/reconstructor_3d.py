@@ -37,12 +37,24 @@ class Reconstructor3D:
 
     @staticmethod
     def _estimate_scale(keypoints: list[Keypoint], calibration: CalibrationData) -> float:
-        ys = [kp.y for kp in keypoints if kp.confidence > 0 and kp.y > 0]
+        ys = [kp.y for kp in keypoints if kp.confidence > 0.3 and kp.y > 0]
         if len(ys) >= 2:
             span_px = max(ys) - min(ys)
             if span_px > 1:
                 return span_px / max(calibration.patient_height_cm * 10.0, 1.0)
-        return 1.0
+        ankles = [kp for kp in keypoints if kp.name in ("left_ankle", "right_ankle") and kp.confidence > 0.3]
+        shoulders = [
+            kp for kp in keypoints if kp.name in ("left_shoulder", "right_shoulder") and kp.confidence > 0.3
+        ]
+        if ankles and shoulders:
+            top = min(kp.y for kp in shoulders)
+            bottom = max(kp.y for kp in ankles)
+            span_px = bottom - top
+            if span_px > 1:
+                return span_px / max(calibration.patient_height_cm * 10.0, 1.0)
+        if calibration.camera_distance_cm and calibration.patient_height_cm:
+            return calibration.patient_height_cm / max(calibration.camera_distance_cm, 1.0)
+        return 0.5
 
     @staticmethod
     def _depth_at(kp: Keypoint, depth_map: np.ndarray | None, pixels_per_mm: float) -> float:

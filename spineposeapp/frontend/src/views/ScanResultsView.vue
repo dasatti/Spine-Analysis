@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import AppLayout from '../components/AppLayout.vue'
 import DigitalTwinViewer from '../components/DigitalTwinViewer.vue'
+import FrameKeypointOverlay from '../components/FrameKeypointOverlay.vue'
 import RiskLevelBadge from '../components/RiskLevelBadge.vue'
 import ScanMetricsPanel from '../components/ScanMetricsPanel.vue'
 import ScanStatusBadge from '../components/ScanStatusBadge.vue'
@@ -14,6 +15,22 @@ const scansStore = useScansStore()
 const scan = computed(() => scansStore.current)
 const patientName = computed(() =>
   scan.value?.patient ? `${scan.value.patient.first_name} ${scan.value.patient.last_name}` : ''
+)
+
+const frameLandmarks = computed(
+  () => scan.value?.keypoints?.frame_landmarks || scan.value?.keypoints?.landmarks || []
+)
+const twinLandmarks = computed(() => scan.value?.keypoints?.landmarks || [])
+const frameViews = [
+  { key: 'front', label: 'Front' },
+  { key: 'side', label: 'Side' },
+  { key: 'back', label: 'Back' },
+  { key: 'adams', label: 'Adams' },
+]
+const selectedFrameView = ref('front')
+
+const currentFrameUrl = computed(
+  () => scan.value?.frame_urls?.[selectedFrameView.value] || null
 )
 
 function formatDate(iso) {
@@ -78,12 +95,36 @@ onMounted(() => scansStore.fetchScan(route.params.id))
         <p class="text-on-surface-variant text-sm mt-2">{{ scan.error_message }}</p>
       </div>
 
-      <div class="grid grid-cols-12 gap-gutter">
-        <section class="col-span-12 lg:col-span-5">
-          <h3 class="font-label-caps text-primary mb-4">Digital Twin</h3>
-          <DigitalTwinViewer
-            :keypoints-json="scan.metrics?.keypoints || scan.metrics?.keypoints_json"
-          />
+      <div v-if="scan.status === 'completed'" class="grid grid-cols-12 gap-gutter items-start">
+        <section class="col-span-12 lg:col-span-5 space-y-stack-lg">
+          <div class="space-y-4">
+            <h3 class="font-label-caps text-primary">Annotated Capture Frames</h3>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="view in frameViews"
+                :key="view.key"
+                :class="[
+                  'px-4 py-2 font-label-caps text-[10px] border transition-colors',
+                  selectedFrameView === view.key
+                    ? 'bg-primary-container text-on-primary-container border-primary-container'
+                    : 'border-outline-variant text-on-surface-variant hover:text-on-surface',
+                ]"
+                type="button"
+                @click="selectedFrameView = view.key"
+              >
+                {{ view.label }}
+              </button>
+            </div>
+            <FrameKeypointOverlay
+              :image-url="currentFrameUrl"
+              :landmarks="frameLandmarks"
+              :view="selectedFrameView"
+            />
+          </div>
+          <div>
+            <h3 class="font-label-caps text-primary mb-4">Digital Twin</h3>
+            <DigitalTwinViewer :landmarks="twinLandmarks" />
+          </div>
         </section>
         <section class="col-span-12 lg:col-span-7">
           <h3 class="font-label-caps text-primary mb-4">Posture Metrics</h3>

@@ -1,8 +1,8 @@
 <script setup>
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 const props = defineProps({
-  keypointsJson: { type: Object, default: null },
+  landmarks: { type: Array, default: () => [] },
   view: { type: String, default: 'front' },
 })
 
@@ -20,8 +20,18 @@ const SPINE_CHAIN = [
   'spine_t10', 'spine_l1', 'spine_l3', 'spine_l5', 'spine_s1',
 ]
 
+const landmarkList = computed(() => {
+  if (Array.isArray(props.landmarks)) return props.landmarks
+  if (props.landmarks?.landmarks) return props.landmarks.landmarks
+  return []
+})
+
+const hasPoints = computed(() =>
+  landmarkList.value.some((kp) => kp.x3d != null && kp.confidence >= 0.3)
+)
+
 async function initThree() {
-  if (!containerRef.value || !props.keypointsJson?.length) return
+  if (!containerRef.value || !hasPoints.value) return
 
   const THREE = window.THREE
   if (!THREE) return
@@ -45,7 +55,7 @@ async function initThree() {
     controls.enableDamping = true
   }
 
-  const points = props.keypointsJson.filter((kp) => kp.x3d != null)
+  const points = landmarkList.value.filter((kp) => kp.x3d != null && kp.confidence >= 0.3)
   for (const kp of points) {
     const geometry = new THREE.SphereGeometry(3, 8, 8)
     const material = new THREE.MeshBasicMaterial({ color: 0xffffff })
@@ -56,7 +66,7 @@ async function initThree() {
 
   if (showSpineCurve.value) {
     const spinePoints = SPINE_CHAIN.map((name) =>
-      props.keypointsJson.find((kp) => kp.name === name && kp.x3d != null)
+      landmarkList.value.find((kp) => kp.name === name && kp.x3d != null && kp.confidence >= 0.3)
     ).filter(Boolean)
     if (spinePoints.length > 1) {
       const curvePoints = spinePoints.map(
@@ -106,17 +116,17 @@ function loadScripts() {
     const three = document.createElement('script')
     three.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'
     three.onload = () => {
-      const controls = document.createElement('script')
-      controls.src =
+      const controlsScript = document.createElement('script')
+      controlsScript.src =
         'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js'
-      controls.onload = resolve
-      document.head.appendChild(controls)
+      controlsScript.onload = resolve
+      document.head.appendChild(controlsScript)
     }
     document.head.appendChild(three)
   })
 }
 
-watch([() => props.keypointsJson, currentView, showSpineCurve], async () => {
+watch([landmarkList, currentView, showSpineCurve], async () => {
   cleanup()
   await loadScripts()
   initThree()
@@ -137,12 +147,9 @@ function switchView(view) {
 
 <template>
   <div class="bg-[#1A1A1A] border border-outline-variant">
-    <div
-      ref="containerRef"
-      class="w-full h-[400px] relative"
-    >
+    <div ref="containerRef" class="w-full h-[400px] relative">
       <div
-        v-if="!keypointsJson?.length"
+        v-if="!hasPoints"
         class="absolute inset-0 flex items-center justify-center text-on-surface-variant"
       >
         3D twin not available for this scan
@@ -159,6 +166,7 @@ function switchView(view) {
               ? 'bg-primary-container text-[#0A0A0A] border-primary-container'
               : 'border-outline-variant text-on-surface-variant hover:text-on-surface',
           ]"
+          type="button"
           @click="switchView(v)"
         >
           {{ v }}

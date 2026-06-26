@@ -140,6 +140,7 @@ def process_scan(self, scan_id: str) -> None:
         detector = _get_detector()
         _update_scan(session, scan, progress_message="Running keypoint detection...")
         raw_keypoints = detector.detect(frame_paths)
+        frame_landmarks = list(raw_keypoints.get("landmarks", []))
 
         keypoints = KeypointNormalizer.normalize(raw_keypoints, scan.detector_model)
         _update_scan(session, scan, progress_message="Keypoints normalised. Running 3D reconstruction...")
@@ -171,7 +172,10 @@ def process_scan(self, scan_id: str) -> None:
         scan.status = ScanStatus.completed
         scan.completed_at = datetime.now(UTC)
         scan.progress_message = "Analysis complete."
-        scan.keypoints_json = {"landmarks": _keypoints_to_json(keypoints_3d)}
+        scan.keypoints_json = {
+            "landmarks": _keypoints_to_json(keypoints_3d),
+            "frame_landmarks": frame_landmarks,
+        }
         scan.metrics_json = metrics
         scan.overall_risk = RiskLevel(overall_risk)
         scan.digital_twin_url = twin_key

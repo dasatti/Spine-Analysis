@@ -11,4 +11,4 @@ async def test_get_settings_200(authed_client: AsyncClient):
     body = response.json()
     assert body["detector_model"] == settings.detector_model
     assert body["keypoint_confidence_threshold"] == settings.keypoint_confidence_threshold
-    assert body["model_weights_loaded"] is False
+    assert body["model_weights_loaded"] is True

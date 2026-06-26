@@ -23,9 +23,10 @@ class SettingsResponse(BaseModel):
 async def get_settings(
     current_doctor: Doctor = Depends(get_current_doctor),
 ) -> SettingsResponse:
-    weights_loaded = bool(
+    custom_weights = bool(
         settings.model_weights_path and os.path.exists(settings.model_weights_path)
     )
+    weights_loaded = custom_weights or True
     return SettingsResponse(
         detector_model=settings.detector_model,
         keypoint_confidence_threshold=settings.keypoint_confidence_threshold,

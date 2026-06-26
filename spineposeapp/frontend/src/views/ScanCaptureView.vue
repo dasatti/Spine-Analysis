@@ -26,6 +26,11 @@ const poses = [
 const files = ref({})
 const previewUrls = ref({})
 const setup = ref(null)
+const captureMode = ref('upload')
+const cameraActive = ref(false)
+const cameraError = ref('')
+const videoRef = ref(null)
+let mediaStream = null
 
 const initials = computed(() => {
   if (!patient.value) return '??'
@@ -52,7 +57,10 @@ function isAllowedFrame(file) {
 }
 
 const currentField = computed(() => poses[currentPose.value].field)
-const currentPreviewUrl = computed(() => previewUrls.value[currentField.value] || null)
+const currentPreviewUrl = computed(() => {
+  if (cameraActive.value && !files.value[currentField.value]) return null
+  return previewUrls.value[currentField.value] || null
+})
 const currentFile = computed(() => files.value[currentField.value] || null)
 
 function setPreviewUrl(field, file) {
@@ -73,6 +81,79 @@ function revokeAllPreviewUrls() {
   previewUrls.value = {}
 }
 
+function assignFile(field, file) {
+  files.value[field] = file
+  setPreviewUrl(field, file)
+}
+
+async function startCamera() {
+  cameraError.value = ''
+  try {
+    stopCamera()
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    })
+    cameraActive.value = true
+    captureMode.value = 'camera'
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    if (videoRef.value) {
+      videoRef.value.srcObject = mediaStream
+      await videoRef.value.play()
+    }
+  } catch (err) {
+    cameraError.value = 'Camera access denied or unavailable. Use file upload instead.'
+    cameraActive.value = false
+  }
+}
+
+function stopCamera() {
+  if (mediaStream) {
+    mediaStream.getTracks().forEach((track) => track.stop())
+    mediaStream = null
+  }
+  if (videoRef.value) {
+    videoRef.value.srcObject = null
+  }
+  cameraActive.value = false
+}
+
+function retakeWithCamera() {
+  const field = currentField.value
+  if (previewUrls.value[field]) {
+    URL.revokeObjectURL(previewUrls.value[field])
+    const next = { ...previewUrls.value }
+    delete next[field]
+    previewUrls.value = next
+  }
+  const nextFiles = { ...files.value }
+  delete nextFiles[field]
+  files.value = nextFiles
+  startCamera()
+}
+
+function captureFromCamera() {
+  const video = videoRef.value
+  if (!video || !video.videoWidth) return
+  const canvas = document.createElement('canvas')
+  canvas.width = video.videoWidth
+  canvas.height = video.videoHeight
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(video, 0, 0)
+  canvas.toBlob((blob) => {
+    if (!blob) return
+    const pose = poses[currentPose.value]
+    const file = new File([blob], `${pose.key}-capture.jpg`, { type: 'image/jpeg' })
+    assignFile(pose.field, file)
+    error.value = ''
+  }, 'image/jpeg', 0.92)
+}
+
+function switchToUpload() {
+  captureMode.value = 'upload'
+  stopCamera()
+}
+
 function onFileChange(field, event) {
   const file = event.target.files?.[0]
   if (!file) return
@@ -82,8 +163,7 @@ function onFileChange(field, event) {
     return
   }
   error.value = ''
-  files.value[field] = file
-  setPreviewUrl(field, file)
+  assignFile(field, file)
 }
 
 const canSubmit = computed(() =>
@@ -123,7 +203,10 @@ onMounted(async () => {
   await patientsStore.fetchOne(patientId.value)
 })
 
-onUnmounted(revokeAllPreviewUrls)
+onUnmounted(() => {
+  stopCamera()
+  revokeAllPreviewUrls()
+})
 </script>
 
 <template>
@@ -168,38 +251,77 @@ onUnmounted(revokeAllPreviewUrls)
       <section
         class="flex-1 relative bg-black overflow-hidden flex items-center justify-center border-r border-outline-variant"
       >
+        <video
+          v-if="cameraActive && !currentPreviewUrl"
+          ref="videoRef"
+          autoplay
+          playsinline
+          muted
+          class="absolute inset-0 w-full h-full object-contain bg-black z-10"
+        />
         <img
           v-if="currentPreviewUrl"
           :src="currentPreviewUrl"
           :alt="`${poses[currentPose].label} preview`"
-          class="absolute inset-0 w-full h-full object-contain bg-black"
+          class="absolute inset-0 w-full h-full object-contain bg-black z-10"
         />
-        <div class="absolute inset-0 scan-overlay-grid pointer-events-none opacity-20"></div>
+        <div class="absolute inset-0 scan-overlay-grid pointer-events-none opacity-20 z-20"></div>
         <div
-          v-if="!currentPreviewUrl"
-          class="relative z-10 text-center p-8 max-w-lg"
+          v-if="!currentPreviewUrl && !cameraActive"
+          class="relative z-30 text-center p-8 max-w-lg"
         >
-          <span class="material-symbols-outlined text-primary text-6xl mb-4">upload_file</span>
+          <span class="material-symbols-outlined text-primary text-6xl mb-4">photo_camera</span>
           <p class="font-headline-md text-headline-md mb-2">{{ poses[currentPose].label }}</p>
           <p class="text-on-surface-variant text-sm mb-6">
-            Upload RGBD frame (PNG, JPEG, or TIFF) for this pose
+            Capture with your device camera or upload a PNG, JPEG, or TIFF frame
           </p>
-          <label
-            class="inline-flex items-center gap-2 px-6 py-3 bg-primary-container text-on-primary-container font-label-caps cursor-pointer hover:opacity-90"
-          >
-            <span class="material-symbols-outlined">folder_open</span>
-            SELECT FILE
-            <input
-              :key="poses[currentPose].field"
-              class="hidden"
-              type="file"
-              @change="onFileChange(poses[currentPose].field, $event)"
-            />
-          </label>
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              class="inline-flex items-center gap-2 px-6 py-3 bg-primary text-on-primary font-label-caps hover:opacity-90"
+              type="button"
+              @click="startCamera"
+            >
+              <span class="material-symbols-outlined">videocam</span>
+              USE CAMERA
+            </button>
+            <label
+              class="inline-flex items-center gap-2 px-6 py-3 bg-primary-container text-on-primary-container font-label-caps cursor-pointer hover:opacity-90"
+            >
+              <span class="material-symbols-outlined">folder_open</span>
+              SELECT FILE
+              <input
+                :key="poses[currentPose].field"
+                class="hidden"
+                type="file"
+                @change="onFileChange(poses[currentPose].field, $event)"
+              />
+            </label>
+          </div>
+          <p v-if="cameraError" class="text-error text-xs mt-4">{{ cameraError }}</p>
         </div>
         <div
-          v-else
-          class="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-3"
+          v-else-if="cameraActive && !currentPreviewUrl"
+          class="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-3"
+        >
+          <button
+            class="inline-flex items-center gap-2 px-8 py-4 bg-primary text-on-primary font-label-caps font-bold hover:opacity-90"
+            type="button"
+            @click="captureFromCamera"
+          >
+            <span class="material-symbols-outlined">camera</span>
+            CAPTURE PHOTO
+          </button>
+          <button
+            class="text-on-surface-variant text-xs font-label-caps hover:text-on-surface"
+            type="button"
+            @click="switchToUpload"
+          >
+            Cancel camera
+          </button>
+        </div>
+        <div
+          v-else-if="currentPreviewUrl"
+          class="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-3"
         >
           <p class="font-metric-sm text-primary bg-black/70 px-4 py-2 border border-primary/30">
             ✓ {{ currentFile?.name }}
@@ -216,6 +338,13 @@ onUnmounted(revokeAllPreviewUrls)
               @change="onFileChange(poses[currentPose].field, $event)"
             />
           </label>
+          <button
+            class="text-on-surface-variant text-xs font-label-caps hover:text-on-surface"
+            type="button"
+            @click="retakeWithCamera"
+          >
+            Retake with camera
+          </button>
         </div>
         <div class="absolute top-4 left-4 w-12 h-12 border-t-2 border-l-2 border-primary/40 z-10"></div>
         <div class="absolute top-4 right-4 w-12 h-12 border-t-2 border-r-2 border-primary/40 z-10"></div>

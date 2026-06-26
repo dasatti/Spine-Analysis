@@ -159,6 +159,7 @@ async def get_scan_detail(
         overall_risk=scan.overall_risk,
         digital_twin_url=twin_url,
         metrics=scan.metrics_json,
+        keypoints=scan.keypoints_json,
         error_message=scan.error_message,
         started_at=scan.started_at,
         completed_at=scan.completed_at,

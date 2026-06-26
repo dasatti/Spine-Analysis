@@ -44,13 +44,29 @@ def resolve_frame_format(content_type: str | None, filename: str | None) -> tupl
 
 class StorageService:
     def __init__(self) -> None:
+        scheme = "https" if settings.minio_secure else "http"
+        internal_endpoint = f"{scheme}://{settings.minio_endpoint}"
         self._client = boto3.client(
             "s3",
-            endpoint_url=f"{'https' if settings.minio_secure else 'http'}://{settings.minio_endpoint}",
+            endpoint_url=internal_endpoint,
             aws_access_key_id=settings.minio_access_key,
             aws_secret_access_key=settings.minio_secret_key,
             config=Config(signature_version="s3v4"),
             region_name="us-east-1",
+        )
+        public_host = settings.minio_public_endpoint or settings.minio_endpoint
+        public_endpoint = f"{scheme}://{public_host}"
+        self._public_client = (
+            self._client
+            if public_endpoint == internal_endpoint
+            else boto3.client(
+                "s3",
+                endpoint_url=public_endpoint,
+                aws_access_key_id=settings.minio_access_key,
+                aws_secret_access_key=settings.minio_secret_key,
+                config=Config(signature_version="s3v4"),
+                region_name="us-east-1",
+            )
         )
         self._bucket = settings.minio_bucket
 
@@ -60,6 +76,31 @@ class StorageService:
         except ClientError:
             self._client.create_bucket(Bucket=self._bucket)
             logger.info("Created MinIO bucket: %s", self._bucket)
+        self._ensure_bucket_cors()
+
+    def _ensure_bucket_cors(self) -> None:
+        origins = set(settings.cors_origins_list)
+        origins.update({"http://localhost", "http://localhost:80", "http://127.0.0.1"})
+        if settings.minio_public_endpoint:
+            scheme = "https" if settings.minio_secure else "http"
+            origins.add(f"{scheme}://{settings.minio_public_endpoint}")
+        try:
+            self._client.put_bucket_cors(
+                Bucket=self._bucket,
+                CORSConfiguration={
+                    "CORSRules": [
+                        {
+                            "AllowedHeaders": ["*"],
+                            "AllowedMethods": ["GET", "HEAD"],
+                            "AllowedOrigins": sorted(origins),
+                            "ExposeHeaders": ["ETag", "Content-Length", "Content-Type"],
+                            "MaxAgeSeconds": 3600,
+                        }
+                    ]
+                },
+            )
+        except ClientError as exc:
+            logger.warning("Could not configure MinIO bucket CORS: %s", exc)
 
     def upload_bytes(self, key: str, data: bytes, content_type: str) -> str:
         self._client.upload_fileobj(
@@ -71,7 +112,7 @@ class StorageService:
         return key
 
     def presigned_url(self, key: str, expires_in: int = 3600) -> str:
-        return self._client.generate_presigned_url(
+        return self._public_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": self._bucket, "Key": key},
             ExpiresIn=expires_in,

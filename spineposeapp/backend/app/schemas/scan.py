@@ -51,6 +51,7 @@ class ScanDetailResponse(BaseModel):
     overall_risk: RiskLevel | None
     digital_twin_url: str | None
     metrics: dict | None
+    keypoints: dict | None = None
     error_message: str | None
     started_at: datetime | None
     completed_at: datetime | None

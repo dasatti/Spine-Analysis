@@ -55,10 +55,18 @@ async function onSubmit() {
     })
     router.push('/dashboard')
   } catch (e) {
+    const detail = e.response?.data?.detail
+    const message = e.response?.data?.message
     error.value =
       e.fieldErrors?.email ||
-      e.response?.data?.detail ||
-      (typeof e.response?.data?.detail === 'string' ? e.response.data.detail : 'Registration failed.')
+      e.fieldErrors?.password ||
+      (typeof detail === 'string' ? detail : detail?.message) ||
+      message ||
+      (e.response?.status === 502
+        ? 'Cannot reach the API server. Try refreshing the page or use http://localhost instead of port 3000.'
+        : !e.response
+          ? 'Network error — is the backend running?'
+          : 'Registration failed.')
   }
 }
 </script>

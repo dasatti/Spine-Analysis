@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str
     minio_endpoint: str
+    minio_public_endpoint: str | None = None
     minio_access_key: str = Field(validation_alias="MINIO_ROOT_USER")
     minio_secret_key: str = Field(validation_alias="MINIO_ROOT_PASSWORD")
     minio_bucket: str = "spinepose-scans"
