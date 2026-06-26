@@ -1,0 +1,9 @@
+# Development overrides — hot reload, debug logging
+services:
+  backend:
+    environment:
+      LOG_LEVEL: DEBUG
+
+  celery_worker:
+    environment:
+      LOG_LEVEL: DEBUG
