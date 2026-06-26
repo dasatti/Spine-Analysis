@@ -1,15 +1,15 @@
-import logging
 import math
 from dataclasses import dataclass
 from typing import TypedDict
 
 import numpy as np
+import structlog
 
 from app.config import settings
 from app.pipeline.base import Keypoint
 from app.pipeline.spine_curve_model import SpineCurve
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 AVAIL_AVAILABLE = "available"
 AVAIL_NO_LANDMARK = "unavailable_no_landmark"
@@ -326,7 +326,7 @@ def _safe_call(func, *args, **kwargs) -> MetricResult:
     try:
         return func(*args, **kwargs)
     except Exception as exc:
-        logger.exception("Metric computation failed in %s: %s", func.__name__, exc)
+        logger.exception("Metric computation failed", function=func.__name__, error=str(exc))
         return MetricResult(value=None, unit="", availability=AVAIL_NO_LANDMARK, reason=str(exc))
 
 

@@ -1,18 +1,32 @@
-import logging
-
+import structlog
 from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import settings
 from app.pipeline.loader import validate_detector_config
 from app.routers import api_router
 from app.services.storage_service import storage_service
 from app.utils.exceptions import AppError
+from app.utils.logging_config import configure_logging
+from app.utils.rate_limit import limiter
 
-logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
-logger = logging.getLogger(__name__)
+configure_logging(settings.log_level)
+logger = structlog.get_logger(__name__)
+
+
+async def rate_limit_handler(_request: Request, _exc: RateLimitExceeded) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={
+            "code": "RATE_LIMIT_EXCEEDED",
+            "message": "Too many requests. Please try again later.",
+        },
+    )
 
 
 def create_app() -> FastAPI:
@@ -21,6 +35,10 @@ def create_app() -> FastAPI:
         version="1.0.0",
         description="Clinical-grade AI-powered posture and spine analysis platform.",
     )
+
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+    app.add_middleware(SlowAPIMiddleware)
 
     app.add_middleware(
         CORSMiddleware,
@@ -34,7 +52,7 @@ def create_app() -> FastAPI:
     async def startup() -> None:
         storage_service.ensure_bucket()
         validate_detector_config()
-        logger.info("SpinePose API started with detector_model=%s", settings.detector_model)
+        logger.info("SpinePose API started", detector_model=settings.detector_model)
 
     @app.exception_handler(AppError)
     async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
@@ -57,7 +75,10 @@ def create_app() -> FastAPI:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content={"code": "VALIDATION_ERROR", "detail": exc.errors()},
+            content={
+                "code": "VALIDATION_ERROR",
+                "detail": jsonable_encoder(exc.errors()),
+            },
         )
 
     @app.exception_handler(Exception)

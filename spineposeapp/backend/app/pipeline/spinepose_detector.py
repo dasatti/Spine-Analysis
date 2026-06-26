@@ -1,10 +1,11 @@
-import logging
 import os
+
+import structlog
 
 from app.pipeline.base import DetectorBase
 from app.pipeline.keypoint_normalizer import REQUIRED_LANDMARKS
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class SpinePoseDetector(DetectorBase):
@@ -15,19 +16,18 @@ class SpinePoseDetector(DetectorBase):
         if weights_path and os.path.exists(weights_path):
             self._model = self._load_model(weights_path)
             self._stub_mode = False
-            logger.info("SpinePose v2 loaded from %s", weights_path)
+            logger.info("SpinePose v2 loaded", weights_path=weights_path)
         else:
             self._stub_mode = True
             logger.warning(
-                "SpinePose v2 running in STUB MODE — no weights loaded. "
-                "Set MODEL_WEIGHTS_PATH to load real weights. "
-                "All keypoints will have confidence=0.0."
+                "SpinePose v2 running in stub mode",
+                reason="no weights loaded; set MODEL_WEIGHTS_PATH",
             )
 
     @staticmethod
     def _load_model(weights_path: str) -> object:
         """Load SpinePose v2 weights. Real inference is a future enhancement."""
-        logger.info("SpinePose weight file present at %s; using placeholder loader", weights_path)
+        logger.info("SpinePose weight file present", weights_path=weights_path)
         return {"weights_path": weights_path}
 
     @property

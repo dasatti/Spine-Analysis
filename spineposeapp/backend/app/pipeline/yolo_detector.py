@@ -1,10 +1,11 @@
-import logging
 import os
+
+import structlog
 
 from app.pipeline.base import DetectorBase
 from app.pipeline.keypoint_normalizer import REQUIRED_LANDMARKS
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class YOLODetector(DetectorBase):
@@ -16,18 +17,15 @@ class YOLODetector(DetectorBase):
         if weights_path and os.path.exists(weights_path):
             self._model = self._load_yolo(weights_path)
             self._stub_mode = False
-            logger.info("YOLO detector (%s) loaded from %s", variant, weights_path)
+            logger.info("YOLO detector loaded", variant=variant, weights_path=weights_path)
         else:
             self._stub_mode = True
-            logger.warning(
-                "YOLO detector (%s) running in STUB MODE — set MODEL_WEIGHTS_PATH.",
-                variant,
-            )
+            logger.warning("YOLO detector running in stub mode", variant=variant)
 
     @staticmethod
     def _load_yolo(weights_path: str) -> object:
         """Load YOLO weights. Real inference is a future enhancement."""
-        logger.info("YOLO weight file present at %s; using placeholder loader", weights_path)
+        logger.info("YOLO weight file present", weights_path=weights_path)
         return {"weights_path": weights_path}
 
     @property

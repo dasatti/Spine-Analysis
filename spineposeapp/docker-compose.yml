@@ -77,6 +77,43 @@ services:
     volumes:
       - ./backend:/app
 
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.workers.scan_tasks flower --port=5555 --address=0.0.0.0
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://spinepose:${POSTGRES_PASSWORD}@postgres:5432/spinepose
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+    depends_on:
+      redis:
+        condition: service_healthy
+      celery_worker:
+        condition: service_started
+    ports:
+      - "5555:5555"
+
+  db_backup:
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile.backup
+    env_file: .env
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BACKUP_BUCKET: ${MINIO_BACKUP_BUCKET:-backups}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
   frontend:
     build:
       context: ./frontend
@@ -86,6 +123,26 @@ services:
     depends_on:
       - backend
 
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN:-}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./caddy/Caddyfile.base:/etc/caddy/Caddyfile.base:ro
+      - ./caddy/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    entrypoint: ["/bin/sh", "/docker-entrypoint.sh"]
+    depends_on:
+      - backend
+      - frontend
+
 volumes:
   postgres_data:
   minio_data:
+  caddy_data:
+  caddy_config:

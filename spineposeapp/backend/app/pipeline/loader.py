@@ -1,10 +1,11 @@
-import logging
 import os
+
+import structlog
 
 from app.config import settings
 from app.pipeline.base import DetectorBase
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def get_detector() -> DetectorBase:
@@ -31,4 +32,8 @@ def validate_detector_config() -> None:
             f"MODEL_WEIGHTS_PATH='{settings.model_weights_path}' does not exist"
         )
     detector = get_detector()
-    logger.info("Detector validated: %s (stub=%s)", detector.model_name, getattr(detector, "_stub_mode", False))
+    logger.info(
+        "Detector validated",
+        model_name=detector.model_name,
+        stub_mode=getattr(detector, "_stub_mode", False),
+    )

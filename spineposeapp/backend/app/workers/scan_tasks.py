@@ -1,5 +1,4 @@
 import json
-import logging
 import shutil
 import tempfile
 import uuid
@@ -7,6 +6,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
+import structlog
 from celery import Celery
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -20,8 +20,11 @@ from app.pipeline.metric_engine import CalibrationData, compute_all, derive_over
 from app.pipeline.reconstructor_3d import Reconstructor3D
 from app.pipeline.spine_curve_model import SpineCurveModel
 from app.services.storage_service import storage_service
+from app.utils.logging_config import configure_logging
+from app.utils.pipeline_logging import bind_pipeline_context, clear_pipeline_context
 
-logger = logging.getLogger(__name__)
+configure_logging(settings.log_level)
+logger = structlog.get_logger(__name__)
 
 celery_app = Celery(
     "spinepose",
@@ -82,7 +85,7 @@ def _download_frames(prefix: str, temp_dir: Path) -> dict[str, str]:
         key = storage_service.find_frame_key(prefix, view)
         if key is None:
             if view != "face":
-                logger.warning("Missing required frame for view %s, prefix %s", view, prefix)
+                logger.warning("Missing required frame", view=view, prefix=prefix)
             continue
         ext = key.rsplit(".", 1)[-1]
         local_path = temp_dir / f"{view}.{ext}"
@@ -111,8 +114,15 @@ def process_scan(self, scan_id: str) -> None:
     try:
         scan = session.execute(select(Scan).where(Scan.id == scan_uuid)).scalar_one_or_none()
         if scan is None:
-            logger.error("Scan %s not found", scan_id)
+            logger.error("Scan not found", scan_id=scan_id)
             return
+
+        bind_pipeline_context(
+            scan_id=scan_id,
+            doctor_id=str(scan.doctor_id) if scan.doctor_id else None,
+            detector_model=scan.detector_model,
+        )
+        logger.info("Scan processing started")
 
         _update_scan(
             session,
@@ -166,7 +176,7 @@ def process_scan(self, scan_id: str) -> None:
         scan.overall_risk = RiskLevel(overall_risk)
         scan.digital_twin_url = twin_key
         session.commit()
-        logger.info("Scan %s completed with risk=%s", scan_id, overall_risk)
+        logger.info("Scan processing completed", overall_risk=overall_risk)
     except Exception as exc:
         session.rollback()
         scan = session.execute(select(Scan).where(Scan.id == scan_uuid)).scalar_one_or_none()
@@ -175,9 +185,10 @@ def process_scan(self, scan_id: str) -> None:
             scan.error_message = str(exc)
             scan.progress_message = "Processing failed."
             session.commit()
-        logger.exception("Scan %s failed: %s", scan_id, exc)
+        logger.exception("Scan processing failed", error=str(exc))
         raise self.retry(exc=exc)
     finally:
+        clear_pipeline_context()
         session.close()
         if temp_dir and temp_dir.exists():
             shutil.rmtree(temp_dir, ignore_errors=True)

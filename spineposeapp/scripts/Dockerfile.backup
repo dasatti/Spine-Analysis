@@ -1,0 +1,10 @@
+FROM alpine:3.19
+
+RUN apk add --no-cache postgresql16-client bash curl \
+    && curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc \
+    && chmod +x /usr/local/bin/mc
+
+COPY run-backup.sh backup-cron.sh /scripts/
+RUN chmod +x /scripts/run-backup.sh /scripts/backup-cron.sh
+
+CMD ["/scripts/backup-cron.sh"]
