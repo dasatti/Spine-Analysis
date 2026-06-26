@@ -54,18 +54,18 @@ watch(() => props.imageUrl, () => {
 </script>
 
 <template>
-  <div class="relative bg-black border border-outline-variant overflow-hidden min-h-[320px]">
+  <div class="relative bg-black border border-outline-variant overflow-hidden h-[560px] min-h-[560px]">
     <img
       v-if="imageUrl && !imageLoadFailed"
       ref="imageRef"
       :src="imageUrl"
-      class="w-full h-[320px] object-contain bg-black"
+      class="w-full h-full object-contain bg-black"
       @load="onImageLoad"
       @error="onImageError"
     />
     <svg
       v-if="imageUrl && !imageLoadFailed && spineLine.length > 1"
-      class="absolute inset-0 w-full h-[320px] pointer-events-none"
+      class="absolute inset-0 w-full h-full pointer-events-none"
       viewBox="0 0 100 100"
       preserveAspectRatio="xMidYMid meet"
     >

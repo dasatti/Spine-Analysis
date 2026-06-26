@@ -69,7 +69,7 @@ const groups = computed(() => {
   <div v-else class="space-y-8">
     <section v-for="group in groups" :key="group.title">
       <h3 class="font-label-caps text-label-caps text-primary mb-4">{{ group.title }}</h3>
-      <div class="grid gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <MetricCard
           v-for="item in group.items"
           :key="item.key"
