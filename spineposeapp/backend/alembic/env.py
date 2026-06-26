@@ -4,6 +4,8 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.config import settings
+from app.database import Base
+from app.models import Doctor, Patient, Scan  # noqa: F401
 
 config = context.config
 
@@ -15,7 +17,7 @@ config.set_main_option(
     settings.database_url.replace("postgresql+asyncpg", "postgresql+psycopg2"),
 )
 
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
