@@ -201,7 +201,7 @@ async function onSubmit() {
         <div
           class="mt-8 flex justify-center gap-6 text-[10px] uppercase tracking-widest text-on-surface-variant/40 font-metric-sm"
         >
-          <span>© 2024 SPINEPOSE AI</span>
+          <span>© 2026 SPINEPOSE AI</span>
           <span>SYSTEM ID: PX-901</span>
         </div>
       </div>

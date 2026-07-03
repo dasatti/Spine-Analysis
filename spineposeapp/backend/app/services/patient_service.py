@@ -2,7 +2,7 @@ import math
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import String, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.doctor import Doctor
@@ -62,14 +62,27 @@ async def list_patients(
 ) -> PatientListResponse:
     query = select(Patient).where(Patient.doctor_id == doctor.id, Patient.is_active.is_(True))
     if search:
-        pattern = f"%{search}%"
-        query = query.where(
-            or_(
-                Patient.first_name.ilike(pattern),
-                Patient.last_name.ilike(pattern),
-                Patient.medical_record_number.ilike(pattern),
+        term = search.strip()
+        pattern = f"%{term}%"
+        clauses = [
+            Patient.first_name.ilike(pattern),
+            Patient.last_name.ilike(pattern),
+            Patient.medical_record_number.ilike(pattern),
+            func.concat(Patient.first_name, " ", Patient.last_name).ilike(pattern),
+        ]
+        parts = term.split()
+        if len(parts) >= 2:
+            clauses.append(
+                Patient.first_name.ilike(f"%{parts[0]}%")
+                & Patient.last_name.ilike(f"%{parts[-1]}%")
             )
-        )
+        try:
+            patient_uuid = uuid.UUID(term)
+            clauses.append(Patient.id == patient_uuid)
+        except ValueError:
+            if len(term) >= 8:
+                clauses.append(func.cast(Patient.id, String).ilike(pattern))
+        query = query.where(or_(*clauses))
     if risk_level:
         query = query.where(Patient.risk_level == risk_level)
 

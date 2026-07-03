@@ -1,5 +1,8 @@
 .env
 __pycache__/
+data/postgres/
+data/minio/
+data/redis/
 *.py[cod]
 *$py.class
 *.so

@@ -1,3 +1,5 @@
+name: spinepose
+
 services:
 
   postgres:
@@ -7,7 +9,8 @@ services:
       POSTGRES_USER: spinepose
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./scripts/postgres/init-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U spinepose"]
       interval: 5s
@@ -18,6 +21,9 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - ./data/redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -33,7 +39,7 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
-      - minio_data:/data
+      - ./data/minio:/data
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -144,8 +150,9 @@ services:
       - backend
       - frontend
 
+# Persistent app data is stored under ./data/ (postgres, minio, redis).
+# Avoid `docker compose down -v` — that removes named volumes such as caddy_data.
+
 volumes:
-  postgres_data:
-  minio_data:
   caddy_data:
   caddy_config:

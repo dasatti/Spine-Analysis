@@ -1,21 +1,93 @@
 import base64
+import os
 import uuid
 from collections.abc import AsyncGenerator, Callable
+from urllib.parse import urlparse, urlunparse
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
-from app.database import AsyncSessionLocal, get_db
+from app.database import get_db
 from app.main import create_app
 
 MINIMAL_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 )
 
-SYNC_DATABASE_URL = settings.database_url.replace("+asyncpg", "")
+TEST_DB_NAME = "spinepose_test"
+
+
+def _test_async_database_url() -> str:
+    explicit = os.environ.get("TEST_DATABASE_URL")
+    if explicit:
+        return explicit
+    parsed = urlparse(settings.database_url.replace("+asyncpg", ""))
+    return urlunparse(parsed._replace(path=f"/{TEST_DB_NAME}")).replace(
+        "postgresql://", "postgresql+asyncpg://"
+    )
+
+
+def _test_sync_database_url() -> str:
+    url = _test_async_database_url().replace("+asyncpg", "")
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return url
+
+
+def _admin_sync_database_url() -> str:
+    parsed = urlparse(_test_sync_database_url())
+    return urlunparse(parsed._replace(path="/postgres"))
+
+
+SYNC_DATABASE_URL = _test_sync_database_url()
+
+
+def ensure_test_database() -> None:
+    admin_engine = create_engine(_admin_sync_database_url(), isolation_level="AUTOCOMMIT")
+    with admin_engine.connect() as conn:
+        exists = conn.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :name"),
+            {"name": TEST_DB_NAME},
+        ).scalar()
+        if not exists:
+            conn.execute(text(f'CREATE DATABASE "{TEST_DB_NAME}"'))
+    admin_engine.dispose()
+
+
+def migrate_test_database() -> None:
+    import subprocess
+
+    env = os.environ.copy()
+    env["DATABASE_URL"] = _test_async_database_url()
+    subprocess.run(
+        ["alembic", "upgrade", "head"],
+        check=True,
+        env=env,
+        cwd="/app",
+    )
+
+
+def patch_app_database(test_async_url: str) -> None:
+    import app.database as db_module
+
+    engine = create_async_engine(test_async_url, echo=False)
+    db_module.engine = engine
+    db_module.AsyncSessionLocal = async_sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def configure_test_database():
+    """Use an isolated test database so pytest never truncates production data."""
+    test_async_url = _test_async_database_url()
+    ensure_test_database()
+    migrate_test_database()
+    patch_app_database(test_async_url)
+    yield
 
 
 def unique_email(prefix: str = "doctor") -> str:
@@ -76,7 +148,9 @@ def clean_db():
 
 @pytest.fixture
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSessionLocal() as session:
+    import app.database as db_module
+
+    async with db_module.AsyncSessionLocal() as session:
         yield session
 
 
@@ -85,7 +159,9 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
     app = create_app()
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
-        async with AsyncSessionLocal() as session:
+        import app.database as db_module
+
+        async with db_module.AsyncSessionLocal() as session:
             yield session
 
     app.dependency_overrides[get_db] = override_get_db

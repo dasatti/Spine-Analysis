@@ -1,6 +1,6 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '../components/AppLayout.vue'
 import { usePatientsStore } from '../stores/patients'
 
@@ -11,6 +11,8 @@ const patientsStore = usePatientsStore()
 const step = ref(1)
 const patientId = ref(route.query.patient_id || '')
 const patientSearch = ref('')
+const searchError = ref('')
+const hasSearched = ref(false)
 const checklist = ref([false, false, false, false])
 const cameraHeight = ref(115)
 const cameraDistance = ref(250)
@@ -27,21 +29,46 @@ const steps = [
 
 const patient = computed(() => patientsStore.current)
 const allChecked = computed(() => checklist.value.every(Boolean))
-const progressWidth = computed(() => `${((step.value - 1) / (steps.length - 1)) * 100}%`)
+const showPatientPicker = computed(() => !patientId.value && step.value === 1)
 
 onMounted(async () => {
   if (patientId.value) {
     await patientsStore.fetchOne(patientId.value)
+    return
   }
+  await loadPatients()
 })
 
-async function searchPatient() {
-  if (!patientSearch.value) return
-  await patientsStore.fetchList({ search: patientSearch.value, page_size: 5 })
-  if (patientsStore.list.length === 1) {
-    patientId.value = patientsStore.list[0].id
-    await patientsStore.fetchOne(patientId.value)
+async function loadPatients() {
+  searchError.value = ''
+  try {
+    const params = { page_size: 10, sort_by: 'last_name', sort_order: 'asc' }
+    if (patientSearch.value.trim()) {
+      params.search = patientSearch.value.trim()
+      hasSearched.value = true
+    } else {
+      hasSearched.value = false
+    }
+    await patientsStore.fetchList(params)
+  } catch (e) {
+    searchError.value =
+      e.response?.data?.message || e.response?.data?.detail || 'Could not load patients.'
+    patientsStore.list = []
   }
+}
+
+async function selectPatient(id) {
+  patientId.value = id
+  searchError.value = ''
+  await patientsStore.fetchOne(id)
+}
+
+function clearPatient() {
+  patientId.value = ''
+  patientsStore.current = null
+  patientSearch.value = ''
+  hasSearched.value = false
+  loadPatients()
 }
 
 function nextStep() {
@@ -66,6 +93,14 @@ function finishSetup() {
   )
   router.push(`/scans/${patientId.value}/capture`)
 }
+
+let searchTimer = null
+watch(patientSearch, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    loadPatients()
+  }, 300)
+})
 </script>
 
 <template>
@@ -113,37 +148,78 @@ function finishSetup() {
     </div>
 
     <div class="flex-1 overflow-y-auto custom-scrollbar p-margin-desktop">
-      <div v-if="!patientId && step === 1" class="max-w-xl mx-auto mb-8">
+      <div v-if="patientId && step === 1" class="max-w-xl mx-auto mb-8">
+        <div
+          class="flex items-center justify-between gap-4 px-4 py-3 bg-primary/10 border border-primary/30"
+        >
+          <div>
+            <p class="font-label-caps text-[10px] text-on-surface-variant mb-1">SELECTED PATIENT</p>
+            <p class="font-metric-sm text-primary">
+              {{ patient ? `${patient.first_name} ${patient.last_name}` : 'Loading...' }}
+            </p>
+            <p v-if="patient?.medical_record_number" class="text-on-surface-variant text-xs mt-1">
+              MRN: {{ patient.medical_record_number }}
+            </p>
+          </div>
+          <button
+            class="px-3 py-2 border border-outline-variant text-on-surface-variant font-label-caps text-[10px] hover:text-on-surface hover:border-primary-container"
+            type="button"
+            @click="clearPatient"
+          >
+            CHANGE
+          </button>
+        </div>
+      </div>
+
+      <div v-if="showPatientPicker" class="max-w-xl mx-auto mb-8">
         <h3 class="font-headline-md text-headline-md mb-4">Select Patient</h3>
         <div class="flex gap-2">
           <input
             v-model="patientSearch"
             class="flex-1 px-4 py-3 bg-[#0a0a0a] border border-outline-variant focus:border-primary-container outline-none font-metric-sm text-on-surface"
             placeholder="Search patient name or ID..."
-            type="text"
+            type="search"
+            @keydown.enter.prevent="loadPatients"
           />
           <button
-            class="px-4 py-3 bg-primary-container text-on-primary-container font-label-caps font-bold"
+            class="px-4 py-3 bg-primary-container text-on-primary-container font-label-caps font-bold disabled:opacity-50"
             type="button"
-            @click="searchPatient"
+            :disabled="patientsStore.loading"
+            @click="loadPatients"
           >
-            SEARCH
+            {{ patientsStore.loading ? '...' : 'SEARCH' }}
           </button>
         </div>
-        <div v-if="patientsStore.list.length" class="mt-4 border border-outline-variant">
+        <p v-if="searchError" class="text-error text-sm mt-3">{{ searchError }}</p>
+        <p
+          v-else-if="patientsStore.loading"
+          class="text-on-surface-variant text-sm mt-3"
+        >
+          Searching patients...
+        </p>
+        <div v-else-if="patientsStore.list.length" class="mt-4 border border-outline-variant">
           <button
             v-for="p in patientsStore.list"
             :key="p.id"
             class="w-full text-left px-4 py-3 hover:bg-surface-container-high border-b border-outline-variant last:border-0"
             type="button"
-            @click="
-              patientId = p.id;
-              patientsStore.fetchOne(p.id);
-            "
+            @click="selectPatient(p.id)"
           >
-            {{ p.first_name }} {{ p.last_name }}
+            <span class="font-metric-sm text-on-surface">{{ p.first_name }} {{ p.last_name }}</span>
+            <span v-if="p.medical_record_number" class="text-on-surface-variant text-xs ml-2">
+              · {{ p.medical_record_number }}
+            </span>
           </button>
         </div>
+        <p
+          v-else-if="hasSearched || patientSearch.trim()"
+          class="text-on-surface-variant text-sm mt-3"
+        >
+          No patients found. Try first name, last name, full name, or medical record number.
+        </p>
+        <p v-else class="text-on-surface-variant text-sm mt-3">
+          No patients yet. Register a patient from the Patients screen first.
+        </p>
       </div>
 
       <div v-if="step === 1" class="max-w-6xl mx-auto grid grid-cols-12 gap-gutter">

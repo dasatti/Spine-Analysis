@@ -56,6 +56,25 @@ async def test_search_patients(authed_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_search_patients_by_full_name(authed_client: AsyncClient):
+    await authed_client.post(
+        "/api/v1/patients",
+        json=patient_payload(first_name="Jane", last_name="Rivera"),
+    )
+    await authed_client.post(
+        "/api/v1/patients",
+        json=patient_payload(first_name="Other", last_name="Beta"),
+    )
+
+    response = await authed_client.get("/api/v1/patients", params={"search": "Jane Rivera"})
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) == 1
+    assert items[0]["first_name"] == "Jane"
+    assert items[0]["last_name"] == "Rivera"
+
+
+@pytest.mark.asyncio
 async def test_get_own_patient_200(authed_client: AsyncClient, patient_id: str):
     response = await authed_client.get(f"/api/v1/patients/{patient_id}")
     assert response.status_code == 200
