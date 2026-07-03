@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.scan import Scan, ScanStatus
-from tests.conftest import patient_payload
+from app.testing.payloads import patient_payload
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,7 @@
 import pytest
 from httpx import AsyncClient
 
-from tests.conftest import patient_payload
+from app.testing.payloads import patient_payload
 
 
 @pytest.mark.asyncio

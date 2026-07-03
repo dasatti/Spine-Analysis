@@ -20,3 +20,7 @@ def unauthorized(message: str = "Invalid credentials") -> AppError:
 
 def forbidden(message: str = "Account inactive") -> AppError:
     return AppError(status.HTTP_403_FORBIDDEN, "FORBIDDEN", message)
+
+
+def bad_request(message: str = "Invalid request") -> AppError:
+    return AppError(status.HTTP_400_BAD_REQUEST, "BAD_REQUEST", message)

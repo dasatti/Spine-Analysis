@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import AppLayout from '../components/AppLayout.vue'
-import { getSettings } from '../api/client'
+import { getSettings, updateDetectorSettings } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 
 const authStore = useAuthStore()
@@ -12,6 +12,7 @@ const message = ref('')
 const error = ref('')
 
 const deviceSettings = ref(null)
+const selectedDetector = ref('spinepose_v2')
 
 const profileForm = ref({
   first_name: '',
@@ -56,11 +57,14 @@ onMounted(async () => {
 })
 
 async function loadDeviceSettings() {
-  if (deviceSettings.value) return
   settingsLoading.value = true
+  error.value = ''
   try {
     const { data } = await getSettings()
     deviceSettings.value = data
+    selectedDetector.value = data.detector_model
+  } catch (e) {
+    error.value = e.response?.data?.message || 'Failed to load device settings.'
   } finally {
     settingsLoading.value = false
   }
@@ -102,6 +106,27 @@ async function savePassword() {
   } finally {
     saving.value = false
   }
+}
+
+async function saveDetectorSettings() {
+  error.value = ''
+  message.value = ''
+  saving.value = true
+  try {
+    const { data } = await updateDetectorSettings({ detector_model: selectedDetector.value })
+    deviceSettings.value = data
+    selectedDetector.value = data.detector_model
+    message.value = 'Detector preference saved. New scans will use this model.'
+  } catch (e) {
+    error.value = e.response?.data?.message || 'Failed to update detector settings.'
+  } finally {
+    saving.value = false
+  }
+}
+
+function detectorLabel(id) {
+  const match = deviceSettings.value?.available_detectors?.find((item) => item.id === id)
+  return match?.label || id
 }
 </script>
 
@@ -252,41 +277,66 @@ async function savePassword() {
             </div>
             <div v-if="settingsLoading" class="text-on-surface-variant">Loading device settings...</div>
             <template v-else-if="deviceSettings">
-              <div class="grid grid-cols-2 gap-gutter">
-                <div class="bg-surface-container-low p-4 border border-outline-variant/30 rounded">
-                  <span class="font-label-caps text-[11px] text-on-surface-variant block mb-2"
-                    >DETECTOR MODEL</span
-                  >
-                  <span class="font-metric-sm text-primary">{{ deviceSettings.detector_model }}</span>
-                </div>
-                <div class="bg-surface-container-low p-4 border border-outline-variant/30 rounded">
-                  <span class="font-label-caps text-[11px] text-on-surface-variant block mb-2"
-                    >KEYPOINT CONFIDENCE THRESHOLD</span
-                  >
-                  <span class="font-metric-sm text-primary">{{
-                    deviceSettings.keypoint_confidence_threshold
-                  }}</span>
-                </div>
-                <div class="bg-surface-container-low p-4 border border-outline-variant/30 rounded col-span-2">
-                  <span class="font-label-caps text-[11px] text-on-surface-variant block mb-2"
-                    >MODEL WEIGHTS</span
-                  >
-                  <div class="flex items-center gap-2">
-                    <span
-                      :class="[
-                        'w-2 h-2 rounded-full',
-                        deviceSettings.model_weights_loaded ? 'bg-primary' : 'bg-error',
-                      ]"
-                    ></span>
-                    <span class="font-metric-sm">{{
-                      deviceSettings.model_weights_loaded ? 'LOADED' : 'NOT LOADED'
+              <form class="space-y-stack-lg" @submit.prevent="saveDetectorSettings">
+                <div class="grid grid-cols-2 gap-gutter">
+                  <div class="col-span-2 flex flex-col gap-unit">
+                    <label class="font-label-caps text-[11px] text-on-surface-variant"
+                      >POSE DETECTOR</label
+                    >
+                    <select
+                      v-model="selectedDetector"
+                      class="bg-surface-container-lowest border border-outline-variant focus:border-primary text-on-surface p-2 font-metric-sm rounded focus:outline-none"
+                    >
+                      <option
+                        v-for="option in deviceSettings.available_detectors"
+                        :key="option.id"
+                        :value="option.id"
+                        :disabled="!option.ready"
+                      >
+                        {{ option.label }}{{ option.ready ? '' : ' (unavailable)' }}
+                      </option>
+                    </select>
+                    <p class="text-[11px] text-on-surface-variant">
+                      Active: {{ detectorLabel(deviceSettings.detector_model) }}. New scans use
+                      your saved preference.
+                    </p>
+                  </div>
+                  <div class="bg-surface-container-low p-4 border border-outline-variant/30 rounded">
+                    <span class="font-label-caps text-[11px] text-on-surface-variant block mb-2"
+                      >KEYPOINT CONFIDENCE THRESHOLD</span
+                    >
+                    <span class="font-metric-sm text-primary">{{
+                      deviceSettings.keypoint_confidence_threshold
                     }}</span>
                   </div>
+                  <div class="bg-surface-container-low p-4 border border-outline-variant/30 rounded">
+                    <span class="font-label-caps text-[11px] text-on-surface-variant block mb-2"
+                      >MODEL STATUS</span
+                    >
+                    <div class="flex items-center gap-2">
+                      <span
+                        :class="[
+                          'w-2 h-2 rounded-full',
+                          deviceSettings.model_weights_loaded ? 'bg-primary' : 'bg-error',
+                        ]"
+                      ></span>
+                      <span class="font-metric-sm">{{
+                        deviceSettings.model_weights_loaded ? 'READY' : 'NOT READY'
+                      }}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
+                <button
+                  class="px-6 py-3 bg-primary text-on-primary font-label-caps font-bold hover:opacity-90 disabled:opacity-50 w-fit"
+                  type="submit"
+                  :disabled="saving || selectedDetector === deviceSettings.detector_model"
+                >
+                  {{ saving ? 'SAVING...' : 'SAVE DETECTOR' }}
+                </button>
+              </form>
               <p class="text-[10px] text-on-surface-variant leading-tight">
-                Device and inference settings are managed by the system administrator and are
-                read-only in the clinical interface.
+                SpinePose v2 uses MediaPipe for clinical spine landmarks. YOLOv8 Pose uses
+                Ultralytics COCO keypoints mapped into the same analysis pipeline.
               </p>
             </template>
           </section>

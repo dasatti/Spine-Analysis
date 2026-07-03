@@ -64,3 +64,4 @@ export const deleteScan = (id) => api.delete(`/scans/${id}`)
 
 export const getDashboardSummary = () => api.get('/dashboard/summary')
 export const getSettings = () => api.get('/settings')
+export const updateDetectorSettings = (payload) => api.put('/settings/detector', payload)

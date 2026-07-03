@@ -7,8 +7,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.config import settings
 from app.models.doctor import Doctor
+from app.pipeline.loader import effective_detector_model
 from app.models.patient import Patient, RiskLevel
 from app.models.scan import Scan, ScanStatus
 from app.schemas.scan import (
@@ -91,7 +91,7 @@ async def create_scan(
         camera_distance_cm=camera_distance_cm,
         patient_height_cm=patient_height_cm,
         patient_weight_kg=patient_weight_kg,
-        detector_model=settings.detector_model,
+        detector_model=effective_detector_model(doctor.preferred_detector_model),
         progress_message="Queued for processing",
     )
     db.add(scan)

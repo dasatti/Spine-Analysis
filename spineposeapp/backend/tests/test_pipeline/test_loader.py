@@ -5,7 +5,7 @@ from app.pipeline.loader import get_detector
 
 def test_loader_unknown_model_raises_value_error(monkeypatch):
     monkeypatch.setattr("app.pipeline.loader.settings.detector_model", "unknown_model")
-    with pytest.raises(ValueError, match="Unknown DETECTOR_MODEL"):
+    with pytest.raises(ValueError, match="Unknown detector model"):
         get_detector()
 
 

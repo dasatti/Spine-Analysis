@@ -42,7 +42,7 @@ celery_app.conf.update(
 
 _sync_engine = None
 _SessionLocal: sessionmaker[Session] | None = None
-_detector = None
+_detector_cache: dict[str, object] = {}
 
 RISK_RANK = {
     RiskLevel.normal: 0,
@@ -66,11 +66,10 @@ def get_sync_session() -> Session:
     return _SessionLocal()
 
 
-def _get_detector():
-    global _detector
-    if _detector is None:
-        _detector = get_detector()
-    return _detector
+def _get_detector(model_name: str):
+    if model_name not in _detector_cache:
+        _detector_cache[model_name] = get_detector(model_name)
+    return _detector_cache[model_name]
 
 
 def _update_scan(session: Session, scan: Scan, **fields) -> None:
@@ -137,7 +136,7 @@ def process_scan(self, scan_id: str) -> None:
         frame_paths = _download_frames(prefix, temp_dir)
         _update_scan(session, scan, progress_message="Frames downloaded. Initialising detector...")
 
-        detector = _get_detector()
+        detector = _get_detector(scan.detector_model)
         _update_scan(session, scan, progress_message="Running keypoint detection...")
         raw_keypoints = detector.detect(frame_paths)
         frame_landmarks = list(raw_keypoints.get("landmarks", []))
