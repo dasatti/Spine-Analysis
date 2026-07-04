@@ -5,6 +5,8 @@ import {
   getScan,
   getScanStatus,
   listScans,
+  recomputeScan,
+  resetScanKeypoints,
 } from '../api/client'
 
 export const useScansStore = defineStore('scans', {
@@ -47,6 +49,26 @@ export const useScansStore = defineStore('scans', {
     },
     async deleteScan(scanId) {
       await deleteScan(scanId)
+    },
+    async recomputeScan(scanId, payload) {
+      this.loading = true
+      try {
+        const { data } = await recomputeScan(scanId, payload)
+        this.current = data
+        return data
+      } finally {
+        this.loading = false
+      }
+    },
+    async resetScanKeypoints(scanId, payload = {}) {
+      this.loading = true
+      try {
+        const { data } = await resetScanKeypoints(scanId, payload)
+        this.current = data
+        return data
+      } finally {
+        this.loading = false
+      }
     },
     pollStatus(scanId, onUpdate) {
       this.stopPolling()

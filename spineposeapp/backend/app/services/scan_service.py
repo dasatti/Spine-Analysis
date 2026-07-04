@@ -14,14 +14,18 @@ from app.models.scan import Scan, ScanStatus
 from app.schemas.scan import (
     FrameUrls,
     PatientBrief,
+    RecomputeKeypointsRequest,
+    ResetKeypointsRequest,
     ScanCreateResponse,
     ScanDetailResponse,
     ScanListItem,
     ScanListResponse,
     ScanStatusResponse,
 )
+from app.services.recompute_service import recompute_scan_keypoints as run_recompute
+from app.services.recompute_service import reset_scan_keypoints as run_reset
 from app.services.storage_service import resolve_frame_format, storage_service
-from app.utils.exceptions import conflict, not_found
+from app.utils.exceptions import bad_request, conflict, not_found
 
 
 @dataclass
@@ -68,6 +72,54 @@ def _frame_urls(scan_id: uuid.UUID) -> FrameUrls:
         key = storage_service.find_frame_key(prefix, view)
         urls[view] = storage_service.presigned_url(key) if key else None
     return FrameUrls(**urls)
+
+
+def _normalize_frame_landmarks(frame_landmarks: list) -> list[dict]:
+    normalized: list[dict] = []
+    for item in frame_landmarks:
+        if hasattr(item, "model_dump"):
+            entry = item.model_dump()
+        elif isinstance(item, dict):
+            entry = dict(item)
+        else:
+            continue
+        if not entry.get("view"):
+            entry["view"] = entry.get("source_view") or "front"
+        normalized.append(entry)
+    return normalized
+
+
+def _scan_detail_response(scan: Scan) -> ScanDetailResponse:
+    twin_url = None
+    if scan.digital_twin_url:
+        twin_url = storage_service.presigned_url(scan.digital_twin_url)
+    audit = (scan.keypoints_json or {}).get("audit") or {}
+
+    return ScanDetailResponse(
+        id=scan.id,
+        patient_id=scan.patient_id,
+        patient=PatientBrief(
+            first_name=scan.patient.first_name,
+            last_name=scan.patient.last_name,
+        ),
+        status=scan.status,
+        detector_model=scan.detector_model,
+        capture_device=scan.capture_device,
+        camera_height_cm=scan.camera_height_cm,
+        camera_distance_cm=scan.camera_distance_cm,
+        patient_height_cm=scan.patient_height_cm,
+        patient_weight_kg=scan.patient_weight_kg,
+        overall_risk=scan.overall_risk,
+        digital_twin_url=twin_url,
+        metrics=scan.metrics_json,
+        keypoints=scan.keypoints_json,
+        keypoints_adjusted=bool(audit.get("adjusted_at")),
+        error_message=scan.error_message,
+        started_at=scan.started_at,
+        completed_at=scan.completed_at,
+        created_at=scan.created_at,
+        frame_urls=_frame_urls(scan.id),
+    )
 
 
 async def create_scan(
@@ -138,34 +190,57 @@ async def get_scan_detail(
     db: AsyncSession, doctor: Doctor, scan_id: uuid.UUID
 ) -> ScanDetailResponse:
     scan = await _get_owned_scan(db, doctor, scan_id)
-    twin_url = None
-    if scan.digital_twin_url:
-        twin_url = storage_service.presigned_url(scan.digital_twin_url)
+    return _scan_detail_response(scan)
 
-    return ScanDetailResponse(
-        id=scan.id,
-        patient_id=scan.patient_id,
-        patient=PatientBrief(
-            first_name=scan.patient.first_name,
-            last_name=scan.patient.last_name,
-        ),
-        status=scan.status,
-        detector_model=scan.detector_model,
-        capture_device=scan.capture_device,
-        camera_height_cm=scan.camera_height_cm,
-        camera_distance_cm=scan.camera_distance_cm,
-        patient_height_cm=scan.patient_height_cm,
-        patient_weight_kg=scan.patient_weight_kg,
-        overall_risk=scan.overall_risk,
-        digital_twin_url=twin_url,
-        metrics=scan.metrics_json,
-        keypoints=scan.keypoints_json,
-        error_message=scan.error_message,
-        started_at=scan.started_at,
-        completed_at=scan.completed_at,
-        created_at=scan.created_at,
-        frame_urls=_frame_urls(scan.id),
-    )
+
+async def recompute_scan_keypoints(
+    db: AsyncSession,
+    doctor: Doctor,
+    scan_id: uuid.UUID,
+    payload: RecomputeKeypointsRequest,
+) -> ScanDetailResponse:
+    scan = await _get_owned_scan(db, doctor, scan_id)
+    if scan.status != ScanStatus.completed:
+        raise conflict("SCAN_NOT_COMPLETED", "Keypoints can only be adjusted on completed scans")
+
+    frame_landmarks = _normalize_frame_landmarks(payload.frame_landmarks)
+    try:
+        run_recompute(
+            scan,
+            scan.patient,
+            frame_landmarks,
+            doctor_id=doctor.id,
+            preserve_manual_spine=payload.preserve_manual_spine,
+            refresh_synthetics=payload.refresh_synthetics,
+            views_refreshed=payload.views_refreshed,
+            note=payload.note,
+        )
+    except ValueError as exc:
+        raise bad_request(str(exc)) from exc
+
+    await db.commit()
+    await db.refresh(scan)
+    return _scan_detail_response(scan)
+
+
+async def reset_scan_keypoints(
+    db: AsyncSession,
+    doctor: Doctor,
+    scan_id: uuid.UUID,
+    payload: ResetKeypointsRequest,
+) -> ScanDetailResponse:
+    scan = await _get_owned_scan(db, doctor, scan_id)
+    if scan.status != ScanStatus.completed:
+        raise conflict("SCAN_NOT_COMPLETED", "Keypoints can only be reset on completed scans")
+
+    try:
+        run_reset(scan, scan.patient, doctor_id=doctor.id, note=payload.note)
+    except ValueError as exc:
+        raise bad_request(str(exc)) from exc
+
+    await db.commit()
+    await db.refresh(scan)
+    return _scan_detail_response(scan)
 
 
 async def list_scans(

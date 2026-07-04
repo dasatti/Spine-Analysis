@@ -122,6 +122,56 @@ async def test_delete_scan_while_processing_409(
 
 
 @pytest.mark.asyncio
+async def test_recompute_scan_keypoints(
+    authed_client: AsyncClient,
+    db_session: AsyncSession,
+    registered_doctor: dict,
+    patient_id: str,
+):
+    doctor_id = uuid.UUID(registered_doctor["doctor"]["id"])
+    patient_uuid = uuid.UUID(patient_id)
+    frame_landmarks = [
+        {"name": "left_shoulder", "x": 200, "y": 140, "confidence": 0.95, "view": "front"},
+        {"name": "right_shoulder", "x": 280, "y": 140, "confidence": 0.95, "view": "front"},
+        {"name": "left_hip", "x": 210, "y": 220, "confidence": 0.9, "view": "front"},
+        {"name": "right_hip", "x": 270, "y": 220, "confidence": 0.9, "view": "front"},
+        {"name": "left_knee", "x": 205, "y": 300, "confidence": 0.88, "view": "front"},
+        {"name": "right_knee", "x": 275, "y": 300, "confidence": 0.88, "view": "front"},
+        {"name": "left_ankle", "x": 200, "y": 380, "confidence": 0.85, "view": "front"},
+        {"name": "right_ankle", "x": 280, "y": 380, "confidence": 0.85, "view": "front"},
+        {"name": "left_ear", "x": 220, "y": 75, "confidence": 0.85, "view": "front"},
+        {"name": "right_ear", "x": 260, "y": 75, "confidence": 0.85, "view": "front"},
+        {"name": "jaw_midpoint", "x": 240, "y": 80, "confidence": 0.9, "view": "front"},
+    ]
+
+    scan = Scan(
+        id=uuid.uuid4(),
+        patient_id=patient_uuid,
+        doctor_id=doctor_id,
+        status=ScanStatus.completed,
+        patient_height_cm=165.0,
+        patient_weight_kg=60.0,
+        detector_model=settings.detector_model,
+        keypoints_json={"frame_landmarks": frame_landmarks, "landmarks": [], "twin_landmarks": []},
+        metrics_json={"spinal_curves": {}, "normal_ranges": {}},
+    )
+    db_session.add(scan)
+    await db_session.commit()
+
+    payload = {
+        "frame_landmarks": [{**frame_landmarks[0], "x": 190}, *frame_landmarks[1:]],
+        "preserve_manual_spine": False,
+        "refresh_synthetics": True,
+    }
+    response = await authed_client.post(f"/api/v1/scans/{scan.id}/recompute", json=payload)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["keypoints_adjusted"] is True
+    assert body["keypoints"]["audit"]["adjusted_at"]
+    assert body["metrics"] is not None
+
+
+@pytest.mark.asyncio
 async def test_list_scans_filtered_by_patient(
     authed_client: AsyncClient,
     patient_id: str,

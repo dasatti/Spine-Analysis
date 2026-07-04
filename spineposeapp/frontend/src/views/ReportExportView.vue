@@ -80,6 +80,19 @@ onMounted(() => scansStore.fetchScan(route.params.id))
           </p>
         </section>
 
+        <section v-if="scan.keypoints_adjusted || scan.keypoints?.audit?.adjusted_at" class="mb-8">
+          <h2 class="text-xs font-bold uppercase tracking-widest mb-4 text-gray-500">
+            Keypoint Adjustment
+          </h2>
+          <p class="text-sm text-amber-800 bg-amber-50 border border-amber-200 p-3">
+            This report uses manually adjusted keypoints
+            <span v-if="scan.keypoints?.audit?.adjusted_at">
+              (last updated {{ formatDate(scan.keypoints.audit.adjusted_at) }})
+            </span>.
+            Measurements reflect clinician corrections, not raw detector output alone.
+          </p>
+        </section>
+
         <section v-if="scan.overall_risk" class="mb-8">
           <h2 class="text-xs font-bold uppercase tracking-widest mb-4 text-gray-500">
             Overall Risk Assessment

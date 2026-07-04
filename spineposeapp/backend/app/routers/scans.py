@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.doctor import Doctor
 from app.models.scan import ScanStatus
 from app.schemas.scan import ScanCreateResponse, ScanDetailResponse, ScanListResponse, ScanStatusResponse
+from app.schemas.scan import RecomputeKeypointsRequest, ResetKeypointsRequest
 from app.services import scan_service
 from app.services.scan_service import FrameUpload
 from app.utils.dependencies import get_current_doctor
@@ -131,6 +132,26 @@ async def get_scan(
     db: AsyncSession = Depends(get_db),
 ) -> ScanDetailResponse:
     return await scan_service.get_scan_detail(db, current_doctor, scan_id)
+
+
+@router.post("/{scan_id}/recompute", response_model=ScanDetailResponse)
+async def recompute_scan_keypoints(
+    scan_id: uuid.UUID,
+    payload: RecomputeKeypointsRequest,
+    current_doctor: Doctor = Depends(get_current_doctor),
+    db: AsyncSession = Depends(get_db),
+) -> ScanDetailResponse:
+    return await scan_service.recompute_scan_keypoints(db, current_doctor, scan_id, payload)
+
+
+@router.post("/{scan_id}/reset-keypoints", response_model=ScanDetailResponse)
+async def reset_scan_keypoints(
+    scan_id: uuid.UUID,
+    payload: ResetKeypointsRequest,
+    current_doctor: Doctor = Depends(get_current_doctor),
+    db: AsyncSession = Depends(get_db),
+) -> ScanDetailResponse:
+    return await scan_service.reset_scan_keypoints(db, current_doctor, scan_id, payload)
 
 
 @router.delete("/{scan_id}", status_code=status.HTTP_204_NO_CONTENT)

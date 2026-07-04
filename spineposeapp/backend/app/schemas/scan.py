@@ -52,11 +52,34 @@ class ScanDetailResponse(BaseModel):
     digital_twin_url: str | None
     metrics: dict | None
     keypoints: dict | None = None
+    keypoints_adjusted: bool = False
     error_message: str | None
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
     frame_urls: FrameUrls = Field(default_factory=FrameUrls)
+
+
+class FrameLandmarkInput(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    name: str
+    x: float
+    y: float
+    confidence: float = 0.95
+    view: str | None = None
+
+
+class RecomputeKeypointsRequest(BaseModel):
+    frame_landmarks: list[FrameLandmarkInput]
+    preserve_manual_spine: bool = False
+    refresh_synthetics: bool = True
+    views_refreshed: list[str] | None = None
+    note: str | None = None
+
+
+class ResetKeypointsRequest(BaseModel):
+    note: str | None = None
 
 
 class ScanListItem(BaseModel):

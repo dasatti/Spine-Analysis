@@ -61,6 +61,9 @@ export const listScans = (params) => api.get('/scans', { params })
 export const listPatientScans = (patientId, params) =>
   api.get(`/patients/${patientId}/scans`, { params })
 export const deleteScan = (id) => api.delete(`/scans/${id}`)
+export const recomputeScan = (id, payload) => api.post(`/scans/${id}/recompute`, payload)
+export const resetScanKeypoints = (id, payload = {}) =>
+  api.post(`/scans/${id}/reset-keypoints`, payload)
 
 export const getDashboardSummary = () => api.get('/dashboard/summary')
 export const getSettings = () => api.get('/settings')
