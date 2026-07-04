@@ -33,6 +33,20 @@ const frameViews = [
 ]
 const selectedFrameView = ref('front')
 
+const twinTabs = [
+  { key: 'twin', label: 'Digital Twin' },
+  { key: 'keypoints', label: 'Keypoints' },
+]
+const selectedTwinTab = ref('twin')
+const keypointViewFilter = ref('front')
+
+const keypointRows = computed(() =>
+  frameLandmarks.value
+    .filter((kp) => (kp.view || 'front') === keypointViewFilter.value)
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+)
+
 const currentFrameUrl = computed(
   () => scan.value?.frame_urls?.[selectedFrameView.value] || null
 )
@@ -127,7 +141,76 @@ onMounted(() => scansStore.fetchScan(route.params.id))
           </div>
           <div>
             <h3 class="font-label-caps text-primary mb-4">Digital Twin</h3>
-            <DigitalTwinViewer :landmarks="twinLandmarks" />
+            <div class="flex gap-2 mb-4">
+              <button
+                v-for="tab in twinTabs"
+                :key="tab.key"
+                :class="[
+                  'px-4 py-2 font-label-caps text-[10px] border transition-colors',
+                  selectedTwinTab === tab.key
+                    ? 'bg-primary-container text-on-primary-container border-primary-container'
+                    : 'border-outline-variant text-on-surface-variant hover:text-on-surface',
+                ]"
+                type="button"
+                @click="selectedTwinTab = tab.key"
+              >
+                {{ tab.label }}
+              </button>
+            </div>
+
+            <DigitalTwinViewer v-if="selectedTwinTab === 'twin'" :landmarks="twinLandmarks" />
+
+            <div v-else class="bg-surface-container border border-outline-variant">
+              <div class="flex flex-wrap gap-2 p-4 border-b border-outline-variant">
+                <button
+                  v-for="view in frameViews"
+                  :key="view.key"
+                  :class="[
+                    'px-3 py-1.5 font-label-caps text-[10px] border transition-colors',
+                    keypointViewFilter === view.key
+                      ? 'bg-primary-container text-on-primary-container border-primary-container'
+                      : 'border-outline-variant text-on-surface-variant hover:text-on-surface',
+                  ]"
+                  type="button"
+                  @click="keypointViewFilter = view.key"
+                >
+                  {{ view.label }}
+                </button>
+              </div>
+              <div class="max-h-[420px] overflow-y-auto">
+                <table class="w-full text-sm">
+                  <thead class="sticky top-0 bg-surface-container">
+                    <tr
+                      class="font-label-caps text-[10px] text-on-surface-variant border-b border-outline-variant"
+                    >
+                      <th class="text-left px-4 py-3">Keypoint</th>
+                      <th class="text-right px-4 py-3">X (px)</th>
+                      <th class="text-right px-4 py-3">Y (px)</th>
+                      <th class="text-right px-4 py-3">Confidence</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="(kp, i) in keypointRows"
+                      :key="`${kp.name}-${i}`"
+                      class="border-b border-outline-variant/40"
+                    >
+                      <td class="px-4 py-2">{{ kp.name }}</td>
+                      <td class="px-4 py-2 text-right font-mono">{{ kp.x?.toFixed(1) }}</td>
+                      <td class="px-4 py-2 text-right font-mono">{{ kp.y?.toFixed(1) }}</td>
+                      <td class="px-4 py-2 text-right font-mono">
+                        {{ ((kp.confidence ?? 0) * 100).toFixed(1) }}%
+                      </td>
+                    </tr>
+                    <tr v-if="!keypointRows.length">
+                      <td colspan="4" class="px-4 py-6 text-center text-on-surface-variant">
+                        No keypoints detected for this view
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
         <section class="col-span-12 lg:col-span-7">
