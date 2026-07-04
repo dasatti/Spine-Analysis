@@ -20,7 +20,11 @@ const patientName = computed(() =>
 const frameLandmarks = computed(
   () => scan.value?.keypoints?.frame_landmarks || scan.value?.keypoints?.landmarks || []
 )
-const twinLandmarks = computed(() => scan.value?.keypoints?.landmarks || [])
+const twinLandmarks = computed(() => {
+  const twin = scan.value?.keypoints?.twin_landmarks
+  if (Array.isArray(twin) && twin.length) return twin
+  return scan.value?.keypoints?.landmarks || []
+})
 const frameViews = [
   { key: 'front', label: 'Front' },
   { key: 'side', label: 'Side' },

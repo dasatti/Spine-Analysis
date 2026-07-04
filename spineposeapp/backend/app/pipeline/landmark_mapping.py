@@ -44,6 +44,68 @@ def interpolate_spine(
     return points
 
 
+def world_landmark_dict(
+    name: str, x: float, y: float, z: float, confidence: float, view: str
+) -> dict:
+    return {
+        "name": name,
+        "x3d": round(x, 1),
+        "y3d": round(y, 1),
+        "z3d": round(z, 1),
+        "confidence": round(max(0.0, min(1.0, confidence)), 4),
+        "source_view": view,
+    }
+
+
+def build_world_landmarks(
+    view: str, points: dict[str, tuple[float, float, float, float] | None]
+) -> list[dict]:
+    """Map metric 3D body points (x, y, z in mm, confidence) into twin landmarks.
+
+    Coordinates follow the MediaPipe world convention: origin at hip centre,
+    x right, y down, z toward the camera.
+    """
+    landmarks: list[dict] = []
+    for name, point in points.items():
+        if name == "nose" or point is None or point[3] <= 0.3:
+            continue
+        landmarks.append(world_landmark_dict(name, point[0], point[1], point[2], point[3], view))
+
+    ls = points.get("left_shoulder")
+    rs = points.get("right_shoulder")
+    lh = points.get("left_hip")
+    rh = points.get("right_hip")
+    if not (ls and rs and lh and rh):
+        return landmarks
+
+    shoulder_mid = tuple((a + b) / 2.0 for a, b in zip(ls[:3], rs[:3]))
+    hip_mid = tuple((a + b) / 2.0 for a, b in zip(lh[:3], rh[:3]))
+    trunk_conf = min(ls[3], rs[3], lh[3], rh[3])
+
+    # Neck sits slightly above the shoulder line (y is down in world space).
+    neck = (shoulder_mid[0], shoulder_mid[1] - 40.0, shoulder_mid[2])
+    landmarks.append(
+        world_landmark_dict("c7_proxy", neck[0], neck[1], neck[2], trunk_conf * 0.9, view)
+    )
+
+    for i, name in enumerate(SPINE_CHAIN):
+        t = i / max(len(SPINE_CHAIN) - 1, 1)
+        x = neck[0] * (1.0 - t) + hip_mid[0] * t
+        y = neck[1] * (1.0 - t) + hip_mid[1] * t
+        z = neck[2] * (1.0 - t) + hip_mid[2] * t
+        conf = trunk_conf * (0.95 - abs(t - 0.5) * 0.1)
+        if conf > 0.3:
+            landmarks.append(world_landmark_dict(name, x, y, z, conf, view))
+
+    nose = points.get("nose")
+    if nose and nose[3] > 0.3:
+        landmarks.append(
+            world_landmark_dict("jaw_midpoint", nose[0], nose[1], nose[2], nose[3] * 0.95, view)
+        )
+
+    return landmarks
+
+
 def build_unified_landmarks(
     view: str,
     *,

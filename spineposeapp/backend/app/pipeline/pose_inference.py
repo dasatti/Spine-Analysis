@@ -12,7 +12,7 @@ import structlog
 from mediapipe.tasks.python import vision
 
 from app.pipeline.image_utils import read_image_bgr
-from app.pipeline.landmark_mapping import build_unified_landmarks
+from app.pipeline.landmark_mapping import build_unified_landmarks, build_world_landmarks
 
 logger = structlog.get_logger(__name__)
 
@@ -68,16 +68,18 @@ def _point_from_mp(landmarks, idx: int, width: int, height: int) -> tuple[float,
     return lm.x * width, lm.y * height, visibility
 
 
-def detect_landmarks_in_frame(
-    image_path: str,
-    view: str,
-    weights_path: str | None = None,
-) -> list[dict]:
-    """Run MediaPipe pose inference on a single frame."""
-    del weights_path  # reserved for future custom SpinePose v2 weights
+def _world_point_from_mp(world_landmarks, idx: int) -> tuple[float, float, float, float]:
+    """Metric world landmark in millimetres (MediaPipe returns metres)."""
+    lm = world_landmarks[idx]
+    visibility = float(getattr(lm, "visibility", getattr(lm, "presence", 1.0)))
+    return lm.x * 1000.0, lm.y * 1000.0, lm.z * 1000.0, visibility
+
+
+def _detect_frame(image_path: str, view: str) -> tuple[list[dict], list[dict]]:
+    """Run inference once, returning (2D pixel landmarks, metric world landmarks)."""
     image = read_image_bgr(image_path)
     if image is None:
-        return []
+        return [], []
 
     height, width = image.shape[:2]
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -86,7 +88,7 @@ def detect_landmarks_in_frame(
     results = landmarker.detect(mp_image)
     if not results.pose_landmarks:
         logger.warning("No MediaPipe pose detected", path=image_path, view=view)
-        return []
+        return [], []
 
     lms = results.pose_landmarks[0]
     landmarks = build_unified_landmarks(
@@ -103,7 +105,32 @@ def detect_landmarks_in_frame(
         left_ankle=_point_from_mp(lms, MP["left_ankle"], width, height),
         right_ankle=_point_from_mp(lms, MP["right_ankle"], width, height),
     )
-    logger.info("MediaPipe landmarks detected", view=view, count=len(landmarks))
+
+    world_landmarks: list[dict] = []
+    if results.pose_world_landmarks:
+        world = results.pose_world_landmarks[0]
+        world_landmarks = build_world_landmarks(
+            view,
+            {name: _world_point_from_mp(world, idx) for name, idx in MP.items()},
+        )
+
+    logger.info(
+        "MediaPipe landmarks detected",
+        view=view,
+        count=len(landmarks),
+        world_count=len(world_landmarks),
+    )
+    return landmarks, world_landmarks
+
+
+def detect_landmarks_in_frame(
+    image_path: str,
+    view: str,
+    weights_path: str | None = None,
+) -> list[dict]:
+    """Run MediaPipe pose inference on a single frame (2D landmarks only)."""
+    del weights_path  # reserved for future custom SpinePose v2 weights
+    landmarks, _ = _detect_frame(image_path, view)
     return landmarks
 
 
@@ -112,10 +139,21 @@ def detect_all_frames(
     weights_path: str | None = None,
     detector_name: str = "spinepose_v2",
 ) -> dict:
+    del weights_path
     all_landmarks: list[dict] = []
-    for view, path in frame_paths.items():
-        all_landmarks.extend(detect_landmarks_in_frame(path, view, weights_path))
-    return {"detector": detector_name, "landmarks": all_landmarks}
+    twin_landmarks: list[dict] = []
+    # Prefer the front frame for the digital twin; fall back to any view with world data.
+    ordered_views = sorted(frame_paths, key=lambda v: 0 if v == "front" else 1)
+    for view in ordered_views:
+        landmarks, world_landmarks = _detect_frame(frame_paths[view], view)
+        all_landmarks.extend(landmarks)
+        if not twin_landmarks and world_landmarks and view != "adams":
+            twin_landmarks = world_landmarks
+    return {
+        "detector": detector_name,
+        "landmarks": all_landmarks,
+        "world_landmarks": twin_landmarks,
+    }
 
 
 def is_backend_ready() -> bool:

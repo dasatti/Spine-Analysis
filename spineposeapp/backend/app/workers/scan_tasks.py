@@ -97,6 +97,29 @@ def _keypoints_to_json(keypoints: list) -> list[dict]:
     return [asdict(kp) for kp in keypoints]
 
 
+def _flat_twin_landmarks(frame_landmarks: list[dict]) -> list[dict]:
+    """Fallback twin: front-view 2D landmarks laid out flat (z=0).
+
+    Used when the detector provides no metric world landmarks (e.g. YOLO).
+    The viewer auto-centres and scales, so raw pixel units are fine.
+    """
+    twin = []
+    for kp in frame_landmarks:
+        if kp.get("view") != "front":
+            continue
+        twin.append(
+            {
+                "name": kp["name"],
+                "x3d": kp["x"],
+                "y3d": kp["y"],
+                "z3d": 0.0,
+                "confidence": kp.get("confidence", 0.0),
+                "source_view": "front",
+            }
+        )
+    return twin
+
+
 def _worsen_patient_risk(patient: Patient, new_risk_value: str) -> None:
     new_risk = RiskLevel(new_risk_value)
     if RISK_RANK[new_risk] > RISK_RANK[patient.risk_level]:
@@ -140,6 +163,9 @@ def process_scan(self, scan_id: str) -> None:
         _update_scan(session, scan, progress_message="Running keypoint detection...")
         raw_keypoints = detector.detect(frame_paths)
         frame_landmarks = list(raw_keypoints.get("landmarks", []))
+        twin_landmarks = list(raw_keypoints.get("world_landmarks") or []) or _flat_twin_landmarks(
+            frame_landmarks
+        )
 
         keypoints = KeypointNormalizer.normalize(raw_keypoints, scan.detector_model)
         _update_scan(session, scan, progress_message="Keypoints normalised. Running 3D reconstruction...")
@@ -161,7 +187,7 @@ def process_scan(self, scan_id: str) -> None:
         twin_key = f"scans/{scan_id}/twin/keypoints.json"
         storage_service.upload_bytes(
             twin_key,
-            json.dumps(_keypoints_to_json(keypoints_3d)).encode("utf-8"),
+            json.dumps(twin_landmarks).encode("utf-8"),
             "application/json",
         )
 
@@ -174,6 +200,7 @@ def process_scan(self, scan_id: str) -> None:
         scan.keypoints_json = {
             "landmarks": _keypoints_to_json(keypoints_3d),
             "frame_landmarks": frame_landmarks,
+            "twin_landmarks": twin_landmarks,
         }
         scan.metrics_json = metrics
         scan.overall_risk = RiskLevel(overall_risk)
