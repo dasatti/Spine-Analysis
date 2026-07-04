@@ -3,11 +3,13 @@ import { onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppLayout from '../components/AppLayout.vue'
 import RiskLevelBadge from '../components/RiskLevelBadge.vue'
-import { listScans } from '../api/client'
+import { deleteScan, listScans } from '../api/client'
 
 const loading = ref(true)
 const reports = ref([])
 const search = ref('')
+const deletingId = ref(null)
+const error = ref('')
 
 async function loadReports() {
   loading.value = true
@@ -18,6 +20,23 @@ async function loadReports() {
     reports.value = data.items
   } finally {
     loading.value = false
+  }
+}
+
+async function removeReport(report) {
+  const confirmed = window.confirm(
+    `Delete report ${report.id.slice(0, 8).toUpperCase()} for ${report.patient_name}? This cannot be undone.`
+  )
+  if (!confirmed) return
+  error.value = ''
+  deletingId.value = report.id
+  try {
+    await deleteScan(report.id)
+    reports.value = reports.value.filter((item) => item.id !== report.id)
+  } catch (e) {
+    error.value = e.response?.data?.message || 'Failed to delete report.'
+  } finally {
+    deletingId.value = null
   }
 }
 
@@ -52,6 +71,7 @@ onMounted(loadReports)
         </div>
       </div>
 
+      <p v-if="error" class="text-error text-sm mb-4">{{ error }}</p>
       <div v-if="loading" class="text-on-surface-variant py-12 text-center">
         Loading reports...
       </div>
@@ -83,6 +103,17 @@ onMounted(loadReports)
             >
               EXPORT
             </RouterLink>
+            <button
+              class="px-3 py-2 border border-outline-variant text-on-surface-variant hover:text-error hover:border-error transition-colors disabled:opacity-40 flex items-center justify-center"
+              type="button"
+              title="Delete report"
+              :disabled="deletingId === report.id"
+              @click="removeReport(report)"
+            >
+              <span class="material-symbols-outlined text-[16px]">
+                {{ deletingId === report.id ? 'hourglass_empty' : 'delete' }}
+              </span>
+            </button>
           </div>
         </div>
       </div>

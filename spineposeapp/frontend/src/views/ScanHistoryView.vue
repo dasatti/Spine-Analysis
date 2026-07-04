@@ -9,6 +9,8 @@ const scansStore = useScansStore()
 const search = ref('')
 const statusFilter = ref('')
 const page = ref(1)
+const deletingId = ref(null)
+const error = ref('')
 
 function formatDateTime(iso) {
   if (!iso) return '—'
@@ -23,6 +25,23 @@ async function loadScans() {
   if (search.value) params.search = search.value
   if (statusFilter.value) params.status = statusFilter.value
   await scansStore.fetchList(params)
+}
+
+async function removeScan(scan) {
+  const confirmed = window.confirm(
+    `Delete scan ${scan.id.slice(0, 8).toUpperCase()} for ${scan.patient_name}? This cannot be undone.`
+  )
+  if (!confirmed) return
+  error.value = ''
+  deletingId.value = scan.id
+  try {
+    await scansStore.deleteScan(scan.id)
+    await loadScans()
+  } catch (e) {
+    error.value = e.response?.data?.message || 'Failed to delete scan session.'
+  } finally {
+    deletingId.value = null
+  }
 }
 
 watch([search, statusFilter, page], loadScans)
@@ -76,6 +95,7 @@ onMounted(loadScans)
         </div>
       </div>
 
+      <p v-if="error" class="text-error text-sm mb-4">{{ error }}</p>
       <div v-if="scansStore.loading" class="text-on-surface-variant py-12 text-center">
         Loading sessions...
       </div>
@@ -126,15 +146,27 @@ onMounted(loadScans)
                 <ScanStatusBadge :status="scan.status" />
               </td>
               <td class="p-panel-padding text-right">
-                <RouterLink
-                  :to="
-                    scan.status === 'processing' || scan.status === 'pending'
-                      ? `/scans/${scan.id}/processing`
-                      : `/scans/${scan.id}`
-                  "
-                  class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-all inline-flex"
-                  >visibility</RouterLink
-                >
+                <div class="inline-flex items-center gap-3">
+                  <RouterLink
+                    :to="
+                      scan.status === 'processing' || scan.status === 'pending'
+                        ? `/scans/${scan.id}/processing`
+                        : `/scans/${scan.id}`
+                    "
+                    class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-all inline-flex"
+                    title="View scan"
+                    >visibility</RouterLink
+                  >
+                  <button
+                    class="material-symbols-outlined text-on-surface-variant hover:text-error transition-all inline-flex disabled:opacity-40"
+                    type="button"
+                    title="Delete scan"
+                    :disabled="deletingId === scan.id"
+                    @click="removeScan(scan)"
+                  >
+                    {{ deletingId === scan.id ? 'hourglass_empty' : 'delete' }}
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
