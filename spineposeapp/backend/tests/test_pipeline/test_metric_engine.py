@@ -4,8 +4,6 @@ import pytest
 from app.pipeline.base import Keypoint
 from app.pipeline.metric_engine import (
     AVAIL_AVAILABLE,
-    AVAIL_LOW_CONFIDENCE,
-    AVAIL_NO_DEPTH,
     AVAIL_NO_FACE,
     AVAIL_NO_LANDMARK,
     AVAIL_NO_SENSOR,
@@ -25,6 +23,10 @@ from app.pipeline.metric_engine import (
     compute_vertebral_rotation,
     derive_overall_risk,
 )
+from app.pipeline.head_shoulder_metrics import HeadShoulderMetrics
+from app.pipeline.leg_metrics import LegMetrics
+from app.pipeline.pelvis_metrics import PelvisMetrics
+from app.pipeline.spine_back_metrics import SpineBackMetrics
 from app.pipeline.spine_curve_model import SpineCurve
 
 
@@ -67,28 +69,34 @@ def leg_landmarks() -> list[Keypoint]:
 
 
 def test_compute_forward_head_posture(cal):
-    landmarks = [kp("left_ear", 0, 180, 20), kp("left_shoulder", 0, 150, 0)]
-    result = compute_forward_head_posture(landmarks, cal)
+    hs = HeadShoulderMetrics(forward_head_posture_mm=12.0, shoulder_asymmetry_mm=None, jaw_deviation_mm=None)
+    result = compute_forward_head_posture([], cal, hs)
     assert result.availability == AVAIL_AVAILABLE
-    assert result.value == 20.0
+    assert result.value == 12.0
+
+
+def test_compute_forward_head_posture_unavailable(cal):
+    result = compute_forward_head_posture([], cal, None)
+    assert result.availability == AVAIL_NO_LANDMARK
 
 
 def test_compute_shoulder_height_asymmetry(cal):
-    landmarks = [kp("left_shoulder", 0, 160, 0), kp("right_shoulder", 0, 150, 0)]
-    result = compute_shoulder_height_asymmetry(landmarks, cal)
+    hs = HeadShoulderMetrics(forward_head_posture_mm=None, shoulder_asymmetry_mm=8.0, jaw_deviation_mm=None)
+    result = compute_shoulder_height_asymmetry([], cal, hs)
     assert result.availability == AVAIL_AVAILABLE
-    assert result.value == 10.0
+    assert result.value == 8.0
 
 
 def test_compute_spine_drift(cal):
-    landmarks = [
-        kp("spine_c7", 0, 170, 0),
-        kp("spine_t4", 5, 150, 0),
-        kp("spine_l3", 10, 100, 0),
-    ]
-    result = compute_spine_drift(landmarks, cal)
+    back = SpineBackMetrics(
+        spine_drift_mm=6.0,
+        scapula_asymmetry_index=None,
+        vertebral_rotation_index=None,
+        adams_rib_hump_present=None,
+    )
+    result = compute_spine_drift([], cal, back)
     assert result.availability == AVAIL_AVAILABLE
-    assert result.value == 10.0
+    assert result.value == 6.0
 
 
 def test_compute_thoracic_kyphosis(cal):
@@ -106,104 +114,148 @@ def test_compute_lumbar_lordosis(cal):
 
 
 def test_compute_pelvic_tilt_sagittal(cal):
-    landmarks = [kp("left_hip", 0, 100, 0), kp("right_hip", 0, 100, 10)]
-    result = compute_pelvic_tilt_sagittal(landmarks, cal)
+    pelvis = PelvisMetrics(obliquity_mm=None, tilt_sagittal_deg=9.5)
+    result = compute_pelvic_tilt_sagittal([], cal, pelvis)
     assert result.availability == AVAIL_AVAILABLE
-    assert result.value == pytest.approx(7.0)
+    assert result.value == 9.5
+
+
+def test_compute_pelvic_tilt_sagittal_unavailable(cal):
+    result = compute_pelvic_tilt_sagittal([], cal, None)
+    assert result.availability == AVAIL_NO_LANDMARK
 
 
 def test_compute_pelvic_obliquity(cal):
-    landmarks = [kp("left_hip", 0, 105, 0), kp("right_hip", 0, 100, 0)]
-    result = compute_pelvic_obliquity(landmarks, cal)
+    pelvis = PelvisMetrics(obliquity_mm=6.0, tilt_sagittal_deg=None)
+    result = compute_pelvic_obliquity([], cal, pelvis)
     assert result.availability == AVAIL_AVAILABLE
-    assert result.value == 5.0
+    assert result.value == 6.0
 
 
-def test_compute_knee_flexion_left(cal, leg_landmarks):
-    result = compute_knee_flexion(leg_landmarks, cal, "left")
+def test_compute_pelvic_obliquity_unavailable(cal):
+    result = compute_pelvic_obliquity([], cal, None)
+    assert result.availability == AVAIL_NO_LANDMARK
+
+
+def test_compute_knee_flexion_left(cal):
+    leg = LegMetrics(
+        knee_flexion_left_deg=3.5,
+        knee_flexion_right_deg=0.0,
+        hka_angle_left_deg=None,
+        hka_angle_right_deg=None,
+    )
+    result = compute_knee_flexion([], cal, "left", leg)
     assert result.availability == AVAIL_AVAILABLE
-    assert result.value == 0.0
+    assert result.value == 3.5
 
 
 def test_compute_knee_flexion_right(cal):
-    landmarks = [
-        kp("right_hip", 0, 100, 0),
-        kp("right_knee", 0, 50, 0),
-        kp("right_ankle", 0, 0, 0),
-    ]
-    result = compute_knee_flexion(landmarks, cal, "right")
+    leg = LegMetrics(
+        knee_flexion_left_deg=0.0,
+        knee_flexion_right_deg=2.0,
+        hka_angle_left_deg=None,
+        hka_angle_right_deg=None,
+    )
+    result = compute_knee_flexion([], cal, "right", leg)
     assert result.availability == AVAIL_AVAILABLE
+    assert result.value == 2.0
 
 
-def test_compute_hka_angle_left(cal, leg_landmarks):
-    result = compute_hka_angle(leg_landmarks, cal, "left")
+def test_compute_knee_flexion_unavailable(cal):
+    result = compute_knee_flexion([], cal, "left", None)
+    assert result.availability == AVAIL_NO_LANDMARK
+
+
+def test_compute_hka_angle_left(cal):
+    leg = LegMetrics(
+        knee_flexion_left_deg=None,
+        knee_flexion_right_deg=None,
+        hka_angle_left_deg=178.5,
+        hka_angle_right_deg=None,
+    )
+    result = compute_hka_angle([], cal, "left", leg)
     assert result.availability == AVAIL_AVAILABLE
-    assert result.value == 180.0
+    assert result.value == 178.5
 
 
 def test_compute_hka_angle_right(cal):
-    landmarks = [
-        kp("right_hip", 0, 100, 0),
-        kp("right_knee", 0, 50, 0),
-        kp("right_ankle", 0, 0, 0),
-    ]
-    result = compute_hka_angle(landmarks, cal, "right")
+    leg = LegMetrics(
+        knee_flexion_left_deg=None,
+        knee_flexion_right_deg=None,
+        hka_angle_left_deg=None,
+        hka_angle_right_deg=179.0,
+    )
+    result = compute_hka_angle([], cal, "right", leg)
     assert result.availability == AVAIL_AVAILABLE
+    assert result.value == 179.0
+
+
+def test_compute_hka_angle_unavailable(cal):
+    result = compute_hka_angle([], cal, "left", None)
+    assert result.availability == AVAIL_NO_LANDMARK
 
 
 def test_compute_jaw_deviation(cal):
-    landmarks = [kp("jaw_midpoint", 5, 180, 0), kp("facial_midline", 0, 180, 0)]
-    result = compute_jaw_deviation(landmarks, cal)
+    hs = HeadShoulderMetrics(forward_head_posture_mm=None, shoulder_asymmetry_mm=None, jaw_deviation_mm=2.5)
+    result = compute_jaw_deviation([], cal, hs)
     assert result.availability == AVAIL_AVAILABLE
-    assert result.value == 5.0
+    assert result.value == 2.5
 
 
 def test_compute_jaw_deviation_no_face(cal):
-    result = compute_jaw_deviation([], cal)
+    result = compute_jaw_deviation([], cal, None)
     assert result.availability == AVAIL_NO_FACE
 
 
 def test_compute_adams_rib_hump(cal):
-    landmarks = [kp("left_shoulder", 0, 160, 0), kp("right_shoulder", 0, 160, 10)]
-    depth = np.zeros((10, 10))
-    result = compute_adams_rib_hump(landmarks, depth)
+    back = SpineBackMetrics(
+        spine_drift_mm=None,
+        scapula_asymmetry_index=None,
+        vertebral_rotation_index=None,
+        adams_rib_hump_present=True,
+    )
+    result = compute_adams_rib_hump([], None, back)
     assert result.availability == AVAIL_AVAILABLE
     assert result.value is True
 
 
-def test_compute_adams_rib_hump_no_depth(cal):
-    landmarks = [kp("left_shoulder", 0, 160, 0), kp("right_shoulder", 0, 160, 0)]
-    result = compute_adams_rib_hump(landmarks, None)
-    assert result.availability == AVAIL_NO_DEPTH
+def test_compute_adams_rib_hump_unavailable(cal):
+    result = compute_adams_rib_hump([], None, None)
+    assert result.availability == AVAIL_NO_LANDMARK
 
 
 def test_compute_vertebral_rotation(cal):
-    landmarks = [kp("left_shoulder", 0, 160, 0), kp("right_shoulder", 0, 160, 20)]
-    depth = np.zeros((10, 10))
-    result = compute_vertebral_rotation(landmarks, depth)
+    back = SpineBackMetrics(
+        spine_drift_mm=None,
+        scapula_asymmetry_index=None,
+        vertebral_rotation_index=0.04,
+        adams_rib_hump_present=None,
+    )
+    result = compute_vertebral_rotation([], None, back)
     assert result.availability == AVAIL_AVAILABLE
-    assert result.value == pytest.approx(0.05)
+    assert result.value == pytest.approx(0.04)
 
 
 def test_compute_scapula_asymmetry(cal):
-    landmarks = [kp("left_shoulder", 0, 160, 0), kp("right_shoulder", 0, 150, 0)]
-    result = compute_scapula_asymmetry(landmarks, cal)
+    back = SpineBackMetrics(
+        spine_drift_mm=None,
+        scapula_asymmetry_index=0.08,
+        vertebral_rotation_index=None,
+        adams_rib_hump_present=None,
+    )
+    result = compute_scapula_asymmetry([], cal, back)
     assert result.availability == AVAIL_AVAILABLE
-    assert result.value == pytest.approx(0.1)
+    assert result.value == pytest.approx(0.08)
 
 
 def test_missing_landmarks_return_unavailable(cal):
-    result = compute_forward_head_posture([], cal)
+    result = compute_forward_head_posture([], cal, None)
     assert result.availability == AVAIL_NO_LANDMARK
 
 
 def test_low_confidence_landmarks(cal):
-    landmarks = [
-        kp("left_ear", 0, 180, 20, confidence=0.1),
-        kp("left_shoulder", 0, 150, 0, confidence=0.1),
-    ]
-    result = compute_forward_head_posture(landmarks, cal)
-    assert result.availability == AVAIL_LOW_CONFIDENCE
+    result = compute_forward_head_posture([], cal, None)
+    assert result.availability == AVAIL_NO_LANDMARK
 
 
 def test_derive_overall_risk_normal():

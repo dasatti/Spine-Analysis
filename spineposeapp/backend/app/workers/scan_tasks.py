@@ -17,6 +17,10 @@ from app.models.scan import Scan, ScanStatus
 from app.pipeline.keypoint_normalizer import KeypointNormalizer
 from app.pipeline.loader import get_detector
 from app.pipeline.metric_engine import CalibrationData, compute_all, derive_overall_risk
+from app.pipeline.head_shoulder_metrics import estimate as estimate_head_shoulder_metrics
+from app.pipeline.leg_metrics import estimate as estimate_leg_metrics
+from app.pipeline.pelvis_metrics import estimate as estimate_pelvis_metrics
+from app.pipeline.spine_back_metrics import estimate as estimate_spine_back_metrics
 from app.pipeline.reconstructor_3d import Reconstructor3D
 from app.pipeline.spine_curve_model import SpineCurveModel
 from app.services.storage_service import storage_service
@@ -179,9 +183,26 @@ def process_scan(self, scan_id: str) -> None:
         keypoints_3d = Reconstructor3D.reconstruct(keypoints, None, calibration)
         _update_scan(session, scan, progress_message="Fitting spine curve model...")
         spine_curve = SpineCurveModel.fit(keypoints_3d, frame_landmarks)
+        pelvis_metrics = estimate_pelvis_metrics(frame_landmarks, calibration.pixels_per_mm)
+        leg_metrics = estimate_leg_metrics(frame_landmarks)
+        head_shoulder_metrics = estimate_head_shoulder_metrics(
+            frame_landmarks, calibration.pixels_per_mm
+        )
+        spine_back_metrics = estimate_spine_back_metrics(
+            frame_landmarks, calibration.pixels_per_mm
+        )
 
         _update_scan(session, scan, progress_message="Computing posture metrics...")
-        metrics = compute_all(keypoints_3d, spine_curve, calibration, None)
+        metrics = compute_all(
+            keypoints_3d,
+            spine_curve,
+            calibration,
+            None,
+            pelvis_metrics,
+            leg_metrics,
+            head_shoulder_metrics,
+            spine_back_metrics,
+        )
         overall_risk = derive_overall_risk(metrics)
 
         twin_key = f"scans/{scan_id}/twin/keypoints.json"

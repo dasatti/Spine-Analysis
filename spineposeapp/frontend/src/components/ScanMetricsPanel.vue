@@ -35,12 +35,12 @@ const groups = computed(() => {
     {
       title: 'Pelvis & Lower Body',
       items: [
-        mk('pelvis_lower_body', 'pelvic_tilt_sagittal_deg', 'Pelvic Tilt (Sagittal)'),
-        mk('pelvis_lower_body', 'pelvic_obliquity_mm', 'Pelvic Obliquity'),
-        mk('pelvis_lower_body', 'knee_flexion_left_deg', 'Knee Flexion (L)'),
-        mk('pelvis_lower_body', 'knee_flexion_right_deg', 'Knee Flexion (R)'),
-        mk('pelvis_lower_body', 'hka_angle_left_deg', 'HKA Angle (L)'),
-        mk('pelvis_lower_body', 'hka_angle_right_deg', 'HKA Angle (R)'),
+        mk('pelvis_lower_body', 'pelvic_tilt_sagittal_deg', 'Pelvic Tilt (Sagittal)', 'side'),
+        mk('pelvis_lower_body', 'pelvic_obliquity_mm', 'Pelvic Obliquity', 'front'),
+        mk('pelvis_lower_body', 'knee_flexion_left_deg', 'Knee Flexion (L)', 'front'),
+        mk('pelvis_lower_body', 'knee_flexion_right_deg', 'Knee Flexion (R)', 'front'),
+        mk('pelvis_lower_body', 'hka_angle_left_deg', 'HKA Angle (L)', 'front'),
+        mk('pelvis_lower_body', 'hka_angle_right_deg', 'HKA Angle (R)', 'front'),
       ].filter(Boolean),
     },
     {

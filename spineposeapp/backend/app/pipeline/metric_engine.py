@@ -7,6 +7,10 @@ import structlog
 
 from app.config import settings
 from app.pipeline.base import Keypoint
+from app.pipeline.head_shoulder_metrics import HeadShoulderMetrics
+from app.pipeline.leg_metrics import LegMetrics
+from app.pipeline.pelvis_metrics import PelvisMetrics
+from app.pipeline.spine_back_metrics import SpineBackMetrics
 from app.pipeline.spine_curve_model import SpineCurve
 
 logger = structlog.get_logger(__name__)
@@ -113,43 +117,67 @@ def _angle_between(a: tuple[float, float, float], b: tuple[float, float, float],
     return math.degrees(math.acos(cos_angle))
 
 
-def compute_forward_head_posture(landmarks: list[Keypoint], cal: CalibrationData) -> MetricResult:
-    ear = _landmark(landmarks, "left_ear") or _landmark(landmarks, "right_ear")
-    shoulder = _landmark(landmarks, "left_shoulder") or _landmark(landmarks, "right_shoulder")
-    if not _usable(ear) or not _usable(shoulder):
-        return _low_confidence("mm") if ear or shoulder else _missing("ear/shoulder", "mm")
-    ear3d = _coord3d(ear)
-    shoulder3d = _coord3d(shoulder)
-    if ear3d is None or shoulder3d is None:
-        return MetricResult(value=None, unit="mm", availability=AVAIL_NO_LANDMARK)
-    horizontal = abs(ear3d[2] - shoulder3d[2])
-    return MetricResult(value=round(horizontal, 1), unit="mm", availability=AVAIL_AVAILABLE)
+def compute_forward_head_posture(
+    landmarks: list[Keypoint],
+    cal: CalibrationData,
+    head_shoulder_metrics: HeadShoulderMetrics | None = None,
+) -> MetricResult:
+    """Forward head posture from side-view ear–shoulder horizontal offset."""
+    if head_shoulder_metrics is None or head_shoulder_metrics.forward_head_posture_mm is None:
+        return MetricResult(
+            value=None,
+            unit="mm",
+            availability=AVAIL_NO_LANDMARK,
+            reason="Side-view estimate (no usable side frame)",
+        )
+    return MetricResult(
+        value=round(head_shoulder_metrics.forward_head_posture_mm, 1),
+        unit="mm",
+        availability=AVAIL_AVAILABLE,
+        reason="Side-view estimate",
+    )
 
 
-def compute_shoulder_height_asymmetry(landmarks: list[Keypoint], cal: CalibrationData) -> MetricResult:
-    left = _landmark(landmarks, "left_shoulder")
-    right = _landmark(landmarks, "right_shoulder")
-    if not _usable(left) or not _usable(right):
-        return _low_confidence("mm") if left or right else _missing("shoulders", "mm")
-    left3d = _coord3d(left)
-    right3d = _coord3d(right)
-    if left3d is None or right3d is None:
-        return MetricResult(value=None, unit="mm", availability=AVAIL_NO_LANDMARK)
-    diff = abs(left3d[1] - right3d[1])
-    return MetricResult(value=round(diff, 1), unit="mm", availability=AVAIL_AVAILABLE)
+def compute_shoulder_height_asymmetry(
+    landmarks: list[Keypoint],
+    cal: CalibrationData,
+    head_shoulder_metrics: HeadShoulderMetrics | None = None,
+) -> MetricResult:
+    """Shoulder height asymmetry from the front view."""
+    if head_shoulder_metrics is None or head_shoulder_metrics.shoulder_asymmetry_mm is None:
+        return MetricResult(
+            value=None,
+            unit="mm",
+            availability=AVAIL_NO_LANDMARK,
+            reason="Front-view estimate (no usable front frame)",
+        )
+    return MetricResult(
+        value=round(head_shoulder_metrics.shoulder_asymmetry_mm, 1),
+        unit="mm",
+        availability=AVAIL_AVAILABLE,
+        reason="Front-view estimate",
+    )
 
 
-def compute_spine_drift(landmarks: list[Keypoint], cal: CalibrationData) -> MetricResult:
-    spine_points = [
-        _coord3d(kp)
-        for kp in landmarks
-        if kp.name.startswith("spine_") and _usable(kp) and _coord3d(kp) is not None
-    ]
-    if len(spine_points) < 2:
-        return _low_confidence("mm")
-    xs = [point[0] for point in spine_points if point is not None]
-    drift = max(xs) - min(xs) if xs else 0.0
-    return MetricResult(value=round(drift, 1), unit="mm", availability=AVAIL_AVAILABLE)
+def compute_spine_drift(
+    landmarks: list[Keypoint],
+    cal: CalibrationData,
+    spine_back_metrics: SpineBackMetrics | None = None,
+) -> MetricResult:
+    """Spine drift from back-view deviation from the sacral midline."""
+    if spine_back_metrics is None or spine_back_metrics.spine_drift_mm is None:
+        return MetricResult(
+            value=None,
+            unit="mm",
+            availability=AVAIL_NO_LANDMARK,
+            reason="Back-view estimate (no usable back frame)",
+        )
+    return MetricResult(
+        value=round(spine_back_metrics.spine_drift_mm, 1),
+        unit="mm",
+        availability=AVAIL_AVAILABLE,
+        reason="Back-view estimate",
+    )
 
 
 def compute_thoracic_kyphosis(
@@ -198,124 +226,188 @@ def compute_lumbar_lordosis(
     )
 
 
-def compute_pelvic_tilt_sagittal(landmarks: list[Keypoint], cal: CalibrationData) -> MetricResult:
-    left = _landmark(landmarks, "left_hip")
-    right = _landmark(landmarks, "right_hip")
-    if not _usable(left) or not _usable(right):
-        return _low_confidence("°")
-    left3d = _coord3d(left)
-    right3d = _coord3d(right)
-    if left3d is None or right3d is None:
-        return _missing("hips", "°")
-    tilt = abs(left3d[2] - right3d[2]) * 0.2 + 5.0
-    return MetricResult(value=round(tilt, 1), unit="°", availability=AVAIL_AVAILABLE)
+def compute_pelvic_tilt_sagittal(
+    landmarks: list[Keypoint],
+    cal: CalibrationData,
+    pelvis_metrics: PelvisMetrics | None = None,
+) -> MetricResult:
+    """Sagittal pelvic tilt estimate from the side view (hip→knee vs vertical)."""
+    if pelvis_metrics is None or pelvis_metrics.tilt_sagittal_deg is None:
+        return MetricResult(
+            value=None,
+            unit="°",
+            availability=AVAIL_NO_LANDMARK,
+            reason="Side-view estimate (no usable side frame)",
+        )
+    return MetricResult(
+        value=round(pelvis_metrics.tilt_sagittal_deg, 1),
+        unit="°",
+        availability=AVAIL_AVAILABLE,
+        reason="Side-view estimate",
+    )
 
 
-def compute_pelvic_obliquity(landmarks: list[Keypoint], cal: CalibrationData) -> MetricResult:
-    left = _landmark(landmarks, "left_hip")
-    right = _landmark(landmarks, "right_hip")
-    if not _usable(left) or not _usable(right):
-        return _low_confidence("mm")
-    left3d = _coord3d(left)
-    right3d = _coord3d(right)
-    if left3d is None or right3d is None:
-        return _missing("hips", "mm")
-    obliquity = abs(left3d[1] - right3d[1])
-    return MetricResult(value=round(obliquity, 1), unit="mm", availability=AVAIL_AVAILABLE)
+def compute_pelvic_obliquity(
+    landmarks: list[Keypoint],
+    cal: CalibrationData,
+    pelvis_metrics: PelvisMetrics | None = None,
+) -> MetricResult:
+    """Frontal pelvic obliquity: vertical hip height difference in millimetres."""
+    if pelvis_metrics is None or pelvis_metrics.obliquity_mm is None:
+        return MetricResult(
+            value=None,
+            unit="mm",
+            availability=AVAIL_NO_LANDMARK,
+            reason="Front-view estimate (no usable front frame)",
+        )
+    return MetricResult(
+        value=round(pelvis_metrics.obliquity_mm, 1),
+        unit="mm",
+        availability=AVAIL_AVAILABLE,
+        reason="Front-view estimate",
+    )
 
 
-def compute_knee_flexion(landmarks: list[Keypoint], cal: CalibrationData, side: str) -> MetricResult:
-    hip = _landmark(landmarks, f"{side}_hip")
-    knee = _landmark(landmarks, f"{side}_knee")
-    ankle = _landmark(landmarks, f"{side}_ankle")
-    if not _usable(hip) or not _usable(knee) or not _usable(ankle):
-        return _low_confidence("°")
-    hip3d = _coord3d(hip)
-    knee3d = _coord3d(knee)
-    ankle3d = _coord3d(ankle)
-    if hip3d is None or knee3d is None or ankle3d is None:
-        return _missing(f"{side}_leg", "°")
-    angle = _angle_between(hip3d, knee3d, ankle3d)
-    flexion = max(0.0, 180.0 - angle)
-    return MetricResult(value=round(flexion, 1), unit="°", availability=AVAIL_AVAILABLE)
+def compute_knee_flexion(
+    landmarks: list[Keypoint],
+    cal: CalibrationData,
+    side: str,
+    leg_metrics: LegMetrics | None = None,
+) -> MetricResult:
+    """Knee flexion estimate from front or side view (hip–knee–ankle angle)."""
+    flexion = None
+    if leg_metrics is not None:
+        flexion = (
+            leg_metrics.knee_flexion_left_deg
+            if side == "left"
+            else leg_metrics.knee_flexion_right_deg
+        )
+    if flexion is None:
+        return MetricResult(
+            value=None,
+            unit="°",
+            availability=AVAIL_NO_LANDMARK,
+            reason="Front/side estimate (no usable leg chain)",
+        )
+    return MetricResult(
+        value=round(flexion, 1),
+        unit="°",
+        availability=AVAIL_AVAILABLE,
+        reason="Front/side estimate",
+    )
 
 
-def compute_hka_angle(landmarks: list[Keypoint], cal: CalibrationData, side: str) -> MetricResult:
-    hip = _landmark(landmarks, f"{side}_hip")
-    knee = _landmark(landmarks, f"{side}_knee")
-    ankle = _landmark(landmarks, f"{side}_ankle")
-    if not _usable(hip) or not _usable(knee) or not _usable(ankle):
-        return _low_confidence("°")
-    hip3d = _coord3d(hip)
-    knee3d = _coord3d(knee)
-    ankle3d = _coord3d(ankle)
-    if hip3d is None or knee3d is None or ankle3d is None:
-        return _missing(f"{side}_leg", "°")
-    angle = _angle_between(hip3d, knee3d, ankle3d)
-    return MetricResult(value=round(angle, 1), unit="°", availability=AVAIL_AVAILABLE)
+def compute_hka_angle(
+    landmarks: list[Keypoint],
+    cal: CalibrationData,
+    side: str,
+    leg_metrics: LegMetrics | None = None,
+) -> MetricResult:
+    """Coronal HKA estimate from front or back view (hip–knee–ankle angle)."""
+    angle = None
+    if leg_metrics is not None:
+        angle = (
+            leg_metrics.hka_angle_left_deg if side == "left" else leg_metrics.hka_angle_right_deg
+        )
+    if angle is None:
+        return MetricResult(
+            value=None,
+            unit="°",
+            availability=AVAIL_NO_LANDMARK,
+            reason="Front/back estimate (no usable leg chain)",
+        )
+    return MetricResult(
+        value=round(angle, 1),
+        unit="°",
+        availability=AVAIL_AVAILABLE,
+        reason="Front/back estimate",
+    )
 
 
-def compute_jaw_deviation(landmarks: list[Keypoint], cal: CalibrationData) -> MetricResult:
-    jaw = _landmark(landmarks, "jaw_midpoint")
-    midline = _landmark(landmarks, "facial_midline")
-    if jaw is None or midline is None:
-        return MetricResult(value=None, unit="mm", availability=AVAIL_NO_FACE)
-    if not _usable(jaw) or not _usable(midline):
-        return MetricResult(value=None, unit="mm", availability=AVAIL_NO_FACE)
-    jaw3d = _coord3d(jaw)
-    mid3d = _coord3d(midline)
-    if jaw3d is None or mid3d is None:
-        return MetricResult(value=None, unit="mm", availability=AVAIL_NO_FACE)
-    deviation = abs(jaw3d[0] - mid3d[0])
-    return MetricResult(value=round(deviation, 1), unit="mm", availability=AVAIL_AVAILABLE)
+def compute_jaw_deviation(
+    landmarks: list[Keypoint],
+    cal: CalibrationData,
+    head_shoulder_metrics: HeadShoulderMetrics | None = None,
+) -> MetricResult:
+    """Jaw deviation from the eye/ear facial midline in front or face view."""
+    if head_shoulder_metrics is None or head_shoulder_metrics.jaw_deviation_mm is None:
+        return MetricResult(
+            value=None,
+            unit="mm",
+            availability=AVAIL_NO_FACE,
+            reason="Front/face estimate (no usable face frame)",
+        )
+    return MetricResult(
+        value=round(head_shoulder_metrics.jaw_deviation_mm, 1),
+        unit="mm",
+        availability=AVAIL_AVAILABLE,
+        reason="Front/face estimate",
+    )
 
 
 def compute_adams_rib_hump(
-    landmarks: list[Keypoint], depth_map: np.ndarray | None
+    landmarks: list[Keypoint],
+    depth_map: np.ndarray | None,
+    spine_back_metrics: SpineBackMetrics | None = None,
 ) -> MetricResult:
-    if depth_map is None:
-        return MetricResult(value=False, unit="", availability=AVAIL_NO_DEPTH)
-    left = _landmark(landmarks, "left_shoulder")
-    right = _landmark(landmarks, "right_shoulder")
-    if not _usable(left) or not _usable(right):
-        return _low_confidence("")
-    left3d = _coord3d(left)
-    right3d = _coord3d(right)
-    if left3d is None or right3d is None:
-        return MetricResult(value=False, unit="", availability=AVAIL_NO_DEPTH)
-    present = abs(left3d[2] - right3d[2]) > 5.0
-    return MetricResult(value=present, unit="", availability=AVAIL_AVAILABLE)
+    """Adams rib hump from thoracic asymmetry in the Adams forward-bend view."""
+    del depth_map  # 2D Adams estimate; depth may augment this in future
+    if spine_back_metrics is None or spine_back_metrics.adams_rib_hump_present is None:
+        return MetricResult(
+            value=None,
+            unit="",
+            availability=AVAIL_NO_LANDMARK,
+            reason="Adams-view estimate (no usable Adams frame)",
+        )
+    return MetricResult(
+        value=spine_back_metrics.adams_rib_hump_present,
+        unit="",
+        availability=AVAIL_AVAILABLE,
+        reason="Adams-view estimate",
+    )
 
 
 def compute_vertebral_rotation(
-    landmarks: list[Keypoint], depth_map: np.ndarray | None
+    landmarks: list[Keypoint],
+    depth_map: np.ndarray | None,
+    spine_back_metrics: SpineBackMetrics | None = None,
 ) -> MetricResult:
-    if depth_map is None:
-        return MetricResult(value=None, unit="", availability=AVAIL_NO_DEPTH)
-    left = _landmark(landmarks, "left_shoulder")
-    right = _landmark(landmarks, "right_shoulder")
-    if not _usable(left) or not _usable(right):
-        return _low_confidence("")
-    left3d = _coord3d(left)
-    right3d = _coord3d(right)
-    if left3d is None or right3d is None:
-        return MetricResult(value=None, unit="", availability=AVAIL_NO_DEPTH)
-    index = min(abs(left3d[2] - right3d[2]) / 100.0, 0.05)
-    return MetricResult(value=round(index, 3), unit="", availability=AVAIL_AVAILABLE)
+    """Vertebral rotation screening index from Adams-view asymmetry."""
+    del depth_map
+    if spine_back_metrics is None or spine_back_metrics.vertebral_rotation_index is None:
+        return MetricResult(
+            value=None,
+            unit="",
+            availability=AVAIL_NO_LANDMARK,
+            reason="Adams-view estimate (no usable Adams frame)",
+        )
+    return MetricResult(
+        value=round(spine_back_metrics.vertebral_rotation_index, 3),
+        unit="",
+        availability=AVAIL_AVAILABLE,
+        reason="Adams-view estimate",
+    )
 
 
-def compute_scapula_asymmetry(landmarks: list[Keypoint], cal: CalibrationData) -> MetricResult:
-    """Stub metric pending dedicated scapula sensor integration."""
-    left = _landmark(landmarks, "left_shoulder")
-    right = _landmark(landmarks, "right_shoulder")
-    if not _usable(left) or not _usable(right):
-        return MetricResult(value=None, unit="", availability=AVAIL_NO_SENSOR, reason="Stub")
-    left3d = _coord3d(left)
-    right3d = _coord3d(right)
-    if left3d is None or right3d is None:
-        return MetricResult(value=None, unit="", availability=AVAIL_NO_SENSOR, reason="Stub")
-    index = min(abs(left3d[1] - right3d[1]) / 100.0, 0.1)
-    return MetricResult(value=round(index, 3), unit="", availability=AVAIL_AVAILABLE, reason="Stub")
+def compute_scapula_asymmetry(
+    landmarks: list[Keypoint],
+    cal: CalibrationData,
+    spine_back_metrics: SpineBackMetrics | None = None,
+) -> MetricResult:
+    """Back-view shoulder-height asymmetry index (scapula proxy)."""
+    if spine_back_metrics is None or spine_back_metrics.scapula_asymmetry_index is None:
+        return MetricResult(
+            value=None,
+            unit="",
+            availability=AVAIL_NO_LANDMARK,
+            reason="Back-view estimate (no usable back frame)",
+        )
+    return MetricResult(
+        value=round(spine_back_metrics.scapula_asymmetry_index, 3),
+        unit="",
+        availability=AVAIL_AVAILABLE,
+        reason="Back-view estimate",
+    )
 
 
 def _serialize_metric(result: MetricResult) -> MetricValue:
@@ -339,23 +431,31 @@ def compute_all(
     spine_curve: SpineCurve,
     calibration: CalibrationData,
     depth_map: np.ndarray | None,
+    pelvis_metrics: PelvisMetrics | None = None,
+    leg_metrics: LegMetrics | None = None,
+    head_shoulder_metrics: HeadShoulderMetrics | None = None,
+    spine_back_metrics: SpineBackMetrics | None = None,
 ) -> MetricsJson:
     """Assemble the metrics_json structure from individual metric functions."""
     thoracic = _safe_call(compute_thoracic_kyphosis, landmarks, spine_curve, calibration)
     lumbar = _safe_call(compute_lumbar_lordosis, landmarks, spine_curve, calibration)
-    pelvic_tilt = _safe_call(compute_pelvic_tilt_sagittal, landmarks, calibration)
-    pelvic_obliquity = _safe_call(compute_pelvic_obliquity, landmarks, calibration)
-    knee_left = _safe_call(compute_knee_flexion, landmarks, calibration, "left")
-    knee_right = _safe_call(compute_knee_flexion, landmarks, calibration, "right")
-    hka_left = _safe_call(compute_hka_angle, landmarks, calibration, "left")
-    hka_right = _safe_call(compute_hka_angle, landmarks, calibration, "right")
-    forward_head = _safe_call(compute_forward_head_posture, landmarks, calibration)
-    shoulder_asym = _safe_call(compute_shoulder_height_asymmetry, landmarks, calibration)
-    jaw = _safe_call(compute_jaw_deviation, landmarks, calibration)
-    spine_drift = _safe_call(compute_spine_drift, landmarks, calibration)
-    scapula = _safe_call(compute_scapula_asymmetry, landmarks, calibration)
-    rotation = _safe_call(compute_vertebral_rotation, landmarks, depth_map)
-    adams = _safe_call(compute_adams_rib_hump, landmarks, depth_map)
+    pelvic_tilt = _safe_call(compute_pelvic_tilt_sagittal, landmarks, calibration, pelvis_metrics)
+    pelvic_obliquity = _safe_call(compute_pelvic_obliquity, landmarks, calibration, pelvis_metrics)
+    knee_left = _safe_call(compute_knee_flexion, landmarks, calibration, "left", leg_metrics)
+    knee_right = _safe_call(compute_knee_flexion, landmarks, calibration, "right", leg_metrics)
+    hka_left = _safe_call(compute_hka_angle, landmarks, calibration, "left", leg_metrics)
+    hka_right = _safe_call(compute_hka_angle, landmarks, calibration, "right", leg_metrics)
+    forward_head = _safe_call(
+        compute_forward_head_posture, landmarks, calibration, head_shoulder_metrics
+    )
+    shoulder_asym = _safe_call(
+        compute_shoulder_height_asymmetry, landmarks, calibration, head_shoulder_metrics
+    )
+    jaw = _safe_call(compute_jaw_deviation, landmarks, calibration, head_shoulder_metrics)
+    spine_drift = _safe_call(compute_spine_drift, landmarks, calibration, spine_back_metrics)
+    scapula = _safe_call(compute_scapula_asymmetry, landmarks, calibration, spine_back_metrics)
+    rotation = _safe_call(compute_vertebral_rotation, landmarks, depth_map, spine_back_metrics)
+    adams = _safe_call(compute_adams_rib_hump, landmarks, depth_map, spine_back_metrics)
 
     return {
         "spinal_curves": {
