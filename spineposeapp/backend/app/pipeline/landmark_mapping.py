@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import math
+
+SIDE_VIEW = "side"
+
 SPINE_CHAIN = [
     "spine_c7",
     "spine_t1",
@@ -34,6 +38,7 @@ def midpoint(
 def interpolate_spine(
     neck: tuple[float, float, float], sacrum: tuple[float, float, float]
 ) -> dict[str, tuple[float, float, float]]:
+    """Evenly spaced spine points on a straight line (front/back views)."""
     points: dict[str, tuple[float, float, float]] = {}
     for i, name in enumerate(SPINE_CHAIN):
         t = i / max(len(SPINE_CHAIN) - 1, 1)
@@ -42,6 +47,127 @@ def interpolate_spine(
         conf = min(neck[2], sacrum[2]) * (0.95 - abs(t - 0.5) * 0.1)
         points[name] = (x, y, max(conf, 0.0))
     return points
+
+
+def _pick_visible_side(
+    left: tuple[float, float, float] | None,
+    right: tuple[float, float, float] | None,
+    threshold: float = 0.3,
+) -> tuple[float, float, float] | None:
+    """Return the higher-confidence left/right joint (for profile views)."""
+    candidates = [point for point in (left, right) if point and point[2] >= threshold]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda point: point[2])
+
+
+def _angle_at(
+    a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]
+) -> float | None:
+    bax, bay = a[0] - b[0], a[1] - b[1]
+    bcx, bcy = c[0] - b[0], c[1] - b[1]
+    norm_ba = math.hypot(bax, bay)
+    norm_bc = math.hypot(bcx, bcy)
+    if norm_ba < 1e-6 or norm_bc < 1e-6:
+        return None
+    cos_angle = (bax * bcx + bay * bcy) / (norm_ba * norm_bc)
+    cos_angle = max(-1.0, min(1.0, cos_angle))
+    return math.degrees(math.acos(cos_angle))
+
+
+def _sagittal_facing_sign(
+    ear: tuple[float, float, float] | None,
+    shoulder: tuple[float, float, float],
+) -> float:
+    """+1 when the subject faces toward +x (ear anterior to shoulder), else -1."""
+    if ear is None or abs(ear[0] - shoulder[0]) < 1.0:
+        return 1.0
+    return 1.0 if ear[0] >= shoulder[0] else -1.0
+
+
+def _trunk_flexion_deg(
+    a: tuple[float, float, float] | None,
+    b: tuple[float, float, float] | None,
+    c: tuple[float, float, float] | None,
+    resting_deg: float,
+) -> float:
+    if not (a and b and c):
+        return resting_deg
+    angle = _angle_at((a[0], a[1]), (b[0], b[1]), (c[0], c[1]))
+    if angle is None:
+        return resting_deg
+    return max(resting_deg, 180.0 - angle)
+
+
+def interpolate_spine_sagittal(
+    neck: tuple[float, float, float],
+    sacrum: tuple[float, float, float],
+    *,
+    ear: tuple[float, float, float] | None = None,
+    shoulder: tuple[float, float, float] | None = None,
+    hip: tuple[float, float, float] | None = None,
+    knee: tuple[float, float, float] | None = None,
+) -> dict[str, tuple[float, float, float]]:
+    """Spine chain with thoracic kyphosis and lumbar lordosis for side-view overlays.
+
+    Vertebrae are not detected by pose models; this bends the interpolated chain
+    using visible ear/shoulder/hip/knee geometry so the overlay matches the
+    natural sagittal S-curve rather than a straight neck-to-hip line.
+    """
+    trunk_height = max(abs(sacrum[1] - neck[1]), 1.0)
+    base_conf = min(neck[2], sacrum[2])
+    facing = _sagittal_facing_sign(ear, shoulder or neck)
+
+    thoracic_flex = _trunk_flexion_deg(ear, shoulder, hip, resting_deg=12.0)
+    lumbar_flex = _trunk_flexion_deg(shoulder, hip, knee, resting_deg=10.0)
+
+    kyphosis_amp = trunk_height * 0.10 * min(thoracic_flex / 35.0, 1.8)
+    lordosis_amp = trunk_height * 0.08 * min(lumbar_flex / 35.0, 1.8)
+    posterior_base = facing * trunk_height * 0.04
+
+    points: dict[str, tuple[float, float, float]] = {}
+    chain_len = len(SPINE_CHAIN)
+    for i, name in enumerate(SPINE_CHAIN):
+        t = i / max(chain_len - 1, 1)
+        bx = neck[0] * (1.0 - t) + sacrum[0] * t
+        by = neck[1] * (1.0 - t) + sacrum[1] * t
+
+        # Spine column sits slightly posterior to the shoulder/hip joints.
+        bx -= posterior_base * (1.0 - 0.3 * t)
+
+        # Thoracic kyphosis: mid-back bulges posterior (convex posteriorly).
+        if t <= 0.55:
+            bump = math.sin(math.pi * t / 0.55)
+            bx -= facing * kyphosis_amp * bump
+
+        # Lumbar lordosis: low back swings anterior relative to mid-thoracic.
+        if t >= 0.45:
+            bump = math.sin(math.pi * (t - 0.45) / 0.55)
+            bx += facing * lordosis_amp * bump * 0.85
+
+        conf = base_conf * (0.95 - abs(t - 0.5) * 0.1)
+        points[name] = (bx, by, max(conf, 0.0))
+    return points
+
+
+def _side_view_spine_anchors(
+    shoulder: tuple[float, float, float],
+    hip: tuple[float, float, float],
+    ear: tuple[float, float, float] | None,
+) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """Neck and sacrum proxies from the visible-side shoulder and hip."""
+    facing = _sagittal_facing_sign(ear, shoulder)
+    neck = (
+        shoulder[0] - facing * 8.0,
+        shoulder[1] - 12.0,
+        shoulder[2] * 0.9,
+    )
+    sacrum = (
+        hip[0] - facing * 5.0,
+        hip[1],
+        hip[2],
+    )
+    return neck, sacrum
 
 
 def world_landmark_dict(
@@ -144,23 +270,48 @@ def build_unified_landmarks(
         if point and point[2] > 0.3:
             landmarks.append(landmark_dict(name, point[0], point[1], point[2], view))
 
-    if not left_shoulder or not right_shoulder or not left_hip or not right_hip:
-        if nose and nose[2] > 0.3:
-            landmarks.append(landmark_dict("jaw_midpoint", nose[0], nose[1], nose[2] * 0.95, view))
-        return landmarks
+    if view == SIDE_VIEW:
+        shoulder = _pick_visible_side(left_shoulder, right_shoulder)
+        hip = _pick_visible_side(left_hip, right_hip)
+        if not shoulder or not hip:
+            if nose and nose[2] > 0.3:
+                landmarks.append(
+                    landmark_dict("jaw_midpoint", nose[0], nose[1], nose[2] * 0.95, view)
+                )
+            return landmarks
 
-    shoulder_mid = midpoint(left_shoulder, right_shoulder)
-    hip_mid = midpoint(left_hip, right_hip)
-    neck = (
-        shoulder_mid[0],
-        shoulder_mid[1] - abs(left_shoulder[1] - right_shoulder[1]) * 0.15 - 8.0,
-        min(left_shoulder[2], right_shoulder[2]) * 0.9,
-    )
+        ear = _pick_visible_side(left_ear, right_ear)
+        knee = _pick_visible_side(left_knee, right_knee)
+        neck, sacrum = _side_view_spine_anchors(shoulder, hip, ear)
+        spine_points = interpolate_spine_sagittal(
+            neck,
+            sacrum,
+            ear=ear,
+            shoulder=shoulder,
+            hip=hip,
+            knee=knee,
+        )
+    else:
+        if not left_shoulder or not right_shoulder or not left_hip or not right_hip:
+            if nose and nose[2] > 0.3:
+                landmarks.append(
+                    landmark_dict("jaw_midpoint", nose[0], nose[1], nose[2] * 0.95, view)
+                )
+            return landmarks
+
+        shoulder_mid = midpoint(left_shoulder, right_shoulder)
+        hip_mid = midpoint(left_hip, right_hip)
+        neck = (
+            shoulder_mid[0],
+            shoulder_mid[1] - abs(left_shoulder[1] - right_shoulder[1]) * 0.15 - 8.0,
+            min(left_shoulder[2], right_shoulder[2]) * 0.9,
+        )
+        spine_points = interpolate_spine(neck, hip_mid)
 
     c7_x, c7_y, c7_conf = neck
     landmarks.append(landmark_dict("c7_proxy", c7_x, c7_y, c7_conf, view))
 
-    for spine_name, (sx, sy, sconf) in interpolate_spine(neck, hip_mid).items():
+    for spine_name, (sx, sy, sconf) in spine_points.items():
         if sconf > 0.3:
             landmarks.append(landmark_dict(spine_name, sx, sy, sconf, view))
 
