@@ -25,6 +25,8 @@ MODEL_URL = (
 
 MP = {
     "nose": 0,
+    "left_eye": 2,
+    "right_eye": 5,
     "left_ear": 7,
     "right_ear": 8,
     "left_shoulder": 11,
@@ -96,6 +98,8 @@ def _detect_frame(image_path: str, view: str) -> tuple[list[dict], list[dict]]:
         nose=_point_from_mp(lms, MP["nose"], width, height),
         left_ear=_point_from_mp(lms, MP["left_ear"], width, height),
         right_ear=_point_from_mp(lms, MP["right_ear"], width, height),
+        left_eye=_point_from_mp(lms, MP["left_eye"], width, height),
+        right_eye=_point_from_mp(lms, MP["right_eye"], width, height),
         left_shoulder=_point_from_mp(lms, MP["left_shoulder"], width, height),
         right_shoulder=_point_from_mp(lms, MP["right_shoulder"], width, height),
         left_hip=_point_from_mp(lms, MP["left_hip"], width, height),

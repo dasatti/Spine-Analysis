@@ -37,14 +37,48 @@ const viewLandmarks = computed(() =>
   )
 )
 
-const spineLine = computed(() => {
-  const names = [
-    'spine_c7', 'spine_t1', 'spine_t4', 'spine_t7',
-    'spine_t10', 'spine_l1', 'spine_l3', 'spine_l5', 'spine_s1',
-  ]
-  return names
-    .map((name) => viewLandmarks.value.find((kp) => kp.name === name))
-    .filter(Boolean)
+const SPINE_CHAIN = [
+  'spine_c7', 'spine_t1', 'spine_t4', 'spine_t7',
+  'spine_t10', 'spine_l1', 'spine_l3', 'spine_l5', 'spine_s1',
+]
+
+// Bone connections approximating the human skeleton.
+const SKELETON_BONES = [
+  ['left_ear', 'left_eye'],
+  ['right_ear', 'right_eye'],
+  ['left_ear', 'c7_proxy'],
+  ['right_ear', 'c7_proxy'],
+  ['c7_proxy', 'spine_c7'],
+  ['left_shoulder', 'right_shoulder'],
+  ['left_hip', 'right_hip'],
+  ['left_hip', 'left_knee'],
+  ['left_knee', 'left_ankle'],
+  ['right_hip', 'right_knee'],
+  ['right_knee', 'right_ankle'],
+  ['spine_s1', 'left_hip'],
+  ['spine_s1', 'right_hip'],
+]
+
+const landmarkByName = computed(() => {
+  const map = {}
+  for (const kp of viewLandmarks.value) map[kp.name] = kp
+  return map
+})
+
+// Skeleton segments (bones + consecutive spine chain) in natural image coords.
+const boneSegments = computed(() => {
+  const map = landmarkByName.value
+  const segments = []
+  const pushSegment = (a, b) => {
+    const p1 = map[a]
+    const p2 = map[b]
+    if (p1 && p2) segments.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y })
+  }
+  for (const [a, b] of SKELETON_BONES) pushSegment(a, b)
+  for (let i = 0; i < SPINE_CHAIN.length - 1; i += 1) {
+    pushSegment(SPINE_CHAIN[i], SPINE_CHAIN[i + 1])
+  }
+  return segments
 })
 
 // Geometry of the letterboxed (object-contain) image inside the container.
@@ -99,8 +133,8 @@ const svgStyle = computed(() => {
   }
 })
 
-const spineStrokeWidth = computed(() =>
-  Math.max(2, naturalSize.value.width / 300)
+const boneStrokeWidth = computed(() =>
+  Math.max(1.5, naturalSize.value.width / 500)
 )
 
 watch(() => props.imageUrl, () => {
@@ -123,24 +157,29 @@ watch(() => props.imageUrl, () => {
       @error="onImageError"
     />
     <svg
-      v-if="imageUrl && overlayReady && spineLine.length > 1"
+      v-if="imageUrl && overlayReady && boneSegments.length"
       class="absolute pointer-events-none"
       :style="svgStyle"
       :viewBox="`0 0 ${naturalSize.width} ${naturalSize.height}`"
       preserveAspectRatio="none"
     >
-      <polyline
-        :points="spineLine.map((kp) => `${kp.x},${kp.y}`).join(' ')"
-        fill="none"
-        stroke="#E8D600"
-        :stroke-width="spineStrokeWidth"
+      <line
+        v-for="(seg, i) in boneSegments"
+        :key="`bone-${i}`"
+        :x1="seg.x1"
+        :y1="seg.y1"
+        :x2="seg.x2"
+        :y2="seg.y2"
+        stroke="#2F80ED"
+        :stroke-width="boneStrokeWidth"
+        stroke-linecap="round"
       />
     </svg>
     <template v-if="imageUrl && overlayReady">
       <div
         v-for="(kp, i) in viewLandmarks"
         :key="`${kp.name}-${i}`"
-        class="absolute w-3 h-3 -ml-1.5 -mt-1.5 rounded-full bg-primary border-2 border-black pointer-events-none"
+        class="absolute w-2 h-2 -ml-1 -mt-1 rounded-full bg-[#FF3B30] border border-white pointer-events-none"
         :style="toPixelStyle(kp)"
         :title="kp.name"
       />

@@ -98,6 +98,8 @@ def detect_landmarks_in_frame(
         nose=points["nose"],
         left_ear=points["left_ear"],
         right_ear=points["right_ear"],
+        left_eye=points["left_eye"],
+        right_eye=points["right_eye"],
         left_shoulder=points["left_shoulder"],
         right_shoulder=points["right_shoulder"],
         left_hip=points["left_hip"],

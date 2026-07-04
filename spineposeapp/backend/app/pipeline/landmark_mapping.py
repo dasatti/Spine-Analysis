@@ -112,6 +112,8 @@ def build_unified_landmarks(
     nose: tuple[float, float, float] | None,
     left_ear: tuple[float, float, float] | None,
     right_ear: tuple[float, float, float] | None,
+    left_eye: tuple[float, float, float] | None = None,
+    right_eye: tuple[float, float, float] | None = None,
     left_shoulder: tuple[float, float, float] | None,
     right_shoulder: tuple[float, float, float] | None,
     left_hip: tuple[float, float, float] | None,
@@ -125,6 +127,8 @@ def build_unified_landmarks(
     direct = {
         "left_ear": left_ear,
         "right_ear": right_ear,
+        "left_eye": left_eye,
+        "right_eye": right_eye,
         "left_shoulder": left_shoulder,
         "right_shoulder": right_shoulder,
         "left_hip": left_hip,

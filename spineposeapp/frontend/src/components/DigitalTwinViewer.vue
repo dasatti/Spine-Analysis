@@ -21,18 +21,21 @@ const SPINE_CHAIN = [
   'spine_t10', 'spine_l1', 'spine_l3', 'spine_l5', 'spine_s1',
 ]
 
-// Bone connections drawn between detected joints.
+// Bone connections approximating the human skeleton (matches 2D overlay).
 const BONES = [
+  ['left_ear', 'left_eye'],
+  ['right_ear', 'right_eye'],
+  ['left_ear', 'c7_proxy'],
+  ['right_ear', 'c7_proxy'],
+  ['c7_proxy', 'spine_c7'],
   ['left_shoulder', 'right_shoulder'],
   ['left_hip', 'right_hip'],
-  ['left_shoulder', 'left_hip'],
-  ['right_shoulder', 'right_hip'],
   ['left_hip', 'left_knee'],
   ['left_knee', 'left_ankle'],
   ['right_hip', 'right_knee'],
   ['right_knee', 'right_ankle'],
-  ['left_ear', 'left_shoulder'],
-  ['right_ear', 'right_shoulder'],
+  ['spine_s1', 'left_hip'],
+  ['spine_s1', 'right_hip'],
 ]
 
 const landmarkList = computed(() => {
@@ -100,20 +103,27 @@ function initThree() {
   const byName = {}
   for (const p of normalizedPoints.value) byName[p.name] = p
 
-  const jointMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff })
-  const spineMaterial = new THREE.MeshBasicMaterial({ color: 0xe8d600 })
+  // Small red spheres with a white outline shell, matching the 2D overlay.
+  const dotMaterial = new THREE.MeshBasicMaterial({ color: 0xff3b30 })
+  const outlineMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    side: THREE.BackSide,
+  })
   for (const p of normalizedPoints.value) {
     const isSpine = p.name.startsWith('spine_') || p.name === 'c7_proxy'
-    const radius = isSpine ? 1.2 : 2
-    const sphere = new THREE.Mesh(
-      new THREE.SphereGeometry(radius, 12, 12),
-      isSpine ? spineMaterial : jointMaterial
+    const radius = isSpine ? 0.45 : 0.6
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(radius, 12, 12), dotMaterial)
+    dot.position.set(p.x, p.y, p.z)
+    scene.add(dot)
+    const outline = new THREE.Mesh(
+      new THREE.SphereGeometry(radius * 1.35, 12, 12),
+      outlineMaterial
     )
-    sphere.position.set(p.x, p.y, p.z)
-    scene.add(sphere)
+    outline.position.set(p.x, p.y, p.z)
+    scene.add(outline)
   }
 
-  const boneMaterial = new THREE.LineBasicMaterial({ color: 0x9e9e9e })
+  const boneMaterial = new THREE.LineBasicMaterial({ color: 0x2f80ed })
   for (const [a, b] of BONES) {
     const pa = byName[a]
     const pb = byName[b]
@@ -130,7 +140,7 @@ function initThree() {
     if (spinePoints.length > 1) {
       const curvePoints = spinePoints.map((p) => new THREE.Vector3(p.x, p.y, p.z))
       const geometry = new THREE.BufferGeometry().setFromPoints(curvePoints)
-      const material = new THREE.LineBasicMaterial({ color: 0xe8d600 })
+      const material = new THREE.LineBasicMaterial({ color: 0x2f80ed })
       scene.add(new THREE.Line(geometry, material))
     }
   }

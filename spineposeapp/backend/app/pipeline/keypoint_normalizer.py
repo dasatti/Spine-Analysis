@@ -4,6 +4,8 @@ from app.pipeline.base import Keypoint
 REQUIRED_LANDMARKS: list[str] = [
     "left_ear",
     "right_ear",
+    "left_eye",
+    "right_eye",
     "c7_proxy",
     "left_shoulder",
     "right_shoulder",
