@@ -178,7 +178,7 @@ def process_scan(self, scan_id: str) -> None:
         )
         keypoints_3d = Reconstructor3D.reconstruct(keypoints, None, calibration)
         _update_scan(session, scan, progress_message="Fitting spine curve model...")
-        spine_curve = SpineCurveModel.fit(keypoints_3d)
+        spine_curve = SpineCurveModel.fit(keypoints_3d, frame_landmarks)
 
         _update_scan(session, scan, progress_message="Computing posture metrics...")
         metrics = compute_all(keypoints_3d, spine_curve, calibration, None)

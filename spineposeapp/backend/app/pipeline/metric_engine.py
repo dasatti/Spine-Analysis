@@ -155,43 +155,47 @@ def compute_spine_drift(landmarks: list[Keypoint], cal: CalibrationData) -> Metr
 def compute_thoracic_kyphosis(
     landmarks: list[Keypoint], spine_curve: SpineCurve, cal: CalibrationData
 ) -> MetricResult:
-    if spine_curve.thoracic_angle_deg is not None:
+    """Sagittal thoracic kyphosis estimate from the side view.
+
+    Requires a side-view frame; without it the true spinal curve cannot be
+    approximated, so the metric is reported as unavailable rather than guessed.
+    """
+    if spine_curve.thoracic_angle_deg is None:
         return MetricResult(
-            value=round(spine_curve.thoracic_angle_deg, 1),
+            value=None,
             unit="°",
-            availability=AVAIL_AVAILABLE,
+            availability=AVAIL_NO_LANDMARK,
+            reason="Side-view estimate (no usable side frame)",
         )
-    t4 = _landmark(landmarks, "spine_t4")
-    t7 = _landmark(landmarks, "spine_t7")
-    if not _usable(t4) or not _usable(t7):
-        return _low_confidence("°")
-    t4_3d = _coord3d(t4)
-    t7_3d = _coord3d(t7)
-    if t4_3d is None or t7_3d is None:
-        return _missing("spine_t4/spine_t7", "°")
-    angle = abs(t7_3d[1] - t4_3d[1]) * 0.5 + 25.0
-    return MetricResult(value=round(angle, 1), unit="°", availability=AVAIL_AVAILABLE)
+    return MetricResult(
+        value=round(spine_curve.thoracic_angle_deg, 1),
+        unit="°",
+        availability=AVAIL_AVAILABLE,
+        reason="Side-view estimate",
+    )
 
 
 def compute_lumbar_lordosis(
     landmarks: list[Keypoint], spine_curve: SpineCurve, cal: CalibrationData
 ) -> MetricResult:
-    if spine_curve.lumbar_angle_deg is not None:
+    """Sagittal lumbar lordosis estimate from the side view.
+
+    Requires a side-view frame; without it the metric is reported as
+    unavailable rather than guessed.
+    """
+    if spine_curve.lumbar_angle_deg is None:
         return MetricResult(
-            value=round(spine_curve.lumbar_angle_deg, 1),
+            value=None,
             unit="°",
-            availability=AVAIL_AVAILABLE,
+            availability=AVAIL_NO_LANDMARK,
+            reason="Side-view estimate (no usable side frame)",
         )
-    l3 = _landmark(landmarks, "spine_l3")
-    s1 = _landmark(landmarks, "spine_s1")
-    if not _usable(l3) or not _usable(s1):
-        return _low_confidence("°")
-    l3_3d = _coord3d(l3)
-    s1_3d = _coord3d(s1)
-    if l3_3d is None or s1_3d is None:
-        return _missing("spine_l3/spine_s1", "°")
-    angle = abs(l3_3d[1] - s1_3d[1]) * 0.5 + 20.0
-    return MetricResult(value=round(angle, 1), unit="°", availability=AVAIL_AVAILABLE)
+    return MetricResult(
+        value=round(spine_curve.lumbar_angle_deg, 1),
+        unit="°",
+        availability=AVAIL_AVAILABLE,
+        reason="Side-view estimate",
+    )
 
 
 def compute_pelvic_tilt_sagittal(landmarks: list[Keypoint], cal: CalibrationData) -> MetricResult:

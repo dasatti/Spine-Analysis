@@ -1,9 +1,7 @@
-import math
 from dataclasses import dataclass
 
-import numpy as np
-
 from app.pipeline.base import Keypoint
+from app.pipeline.sagittal_curve import estimate_sagittal_angles
 
 
 @dataclass
@@ -31,8 +29,18 @@ class SpineCurveModel:
     ]
 
     @classmethod
-    def fit(cls, keypoints: list[Keypoint]) -> SpineCurve:
-        """Build a spine curve from available 3D spine landmarks."""
+    def fit(
+        cls,
+        keypoints: list[Keypoint],
+        frame_landmarks: list[dict] | None = None,
+    ) -> SpineCurve:
+        """Build a spine curve, estimating curvature from the side-view frame.
+
+        The interpolated 3D spine landmarks form a straight line and carry no
+        curvature, so thoracic/lumbar angles come from the sagittal (side view)
+        proxy. When no side view is available both angles are ``None`` and the
+        downstream metric is reported as unavailable.
+        """
         lookup = {kp.name: kp for kp in keypoints}
         points: list[tuple[float, float, float]] = []
         for name in cls.SPINE_NAMES:
@@ -40,27 +48,9 @@ class SpineCurveModel:
             if kp and kp.x3d is not None and kp.y3d is not None and kp.z3d is not None:
                 points.append((kp.x3d, kp.y3d, kp.z3d))
 
-        thoracic = cls._segment_angle(points, 0, min(4, len(points) - 1))
-        lumbar = cls._segment_angle(points, max(0, len(points) - 5), len(points) - 1)
+        thoracic, lumbar = estimate_sagittal_angles(frame_landmarks or [])
         return SpineCurve(
             points=points,
             thoracic_angle_deg=thoracic,
             lumbar_angle_deg=lumbar,
         )
-
-    @staticmethod
-    def _segment_angle(
-        points: list[tuple[float, float, float]], start: int, end: int
-    ) -> float | None:
-        if end <= start or end >= len(points):
-            return None
-        p1 = np.array(points[start])
-        p2 = np.array(points[end])
-        vertical = np.array([0.0, 1.0, 0.0])
-        segment = p2 - p1
-        norm = np.linalg.norm(segment)
-        if norm < 1e-6:
-            return None
-        cos_angle = np.dot(segment / norm, vertical)
-        cos_angle = float(np.clip(cos_angle, -1.0, 1.0))
-        return abs(math.degrees(math.acos(cos_angle)))
