@@ -3,6 +3,7 @@ from app.pipeline.landmark_mapping import (
     build_unified_landmarks,
     interpolate_spine,
     interpolate_spine_sagittal,
+    twin_landmarks_from_frame,
 )
 
 
@@ -71,3 +72,19 @@ def test_side_view_uses_visible_side_joints():
     assert "spine_l3" in spine
     # Visible right shoulder x=305; spine should not sit at left/right midpoint (~307.5).
     assert abs(spine["spine_t4"]["x"] - 307.5) > 3.0
+
+
+def test_twin_landmarks_include_all_capture_views():
+    frame_landmarks = [
+        {"name": "left_hip", "x": 210, "y": 220, "confidence": 0.9, "view": "front"},
+        {"name": "left_hip", "x": 292, "y": 420, "confidence": 0.9, "view": "side"},
+        {"name": "left_hip", "x": 400, "y": 225, "confidence": 0.9, "view": "back"},
+        {"name": "left_hip", "x": 100, "y": 100, "confidence": 0.9, "view": "adams"},
+    ]
+    twin = twin_landmarks_from_frame(frame_landmarks)
+    views = {item["source_view"] for item in twin}
+    assert views == {"front", "side", "back"}
+    side = next(item for item in twin if item["source_view"] == "side")
+    assert side["x3d"] == 0.0
+    assert side["y3d"] == 420.0
+    assert side["z3d"] == 292.0

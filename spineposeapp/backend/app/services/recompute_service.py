@@ -13,6 +13,7 @@ from app.models.scan import Scan
 from app.pipeline.head_shoulder_metrics import estimate as estimate_head_shoulder_metrics
 from app.pipeline.keypoint_normalizer import KeypointNormalizer
 from app.pipeline.landmark_refresh import refresh_frame_landmarks
+from app.pipeline.landmark_mapping import twin_landmarks_from_frame
 from app.pipeline.leg_metrics import estimate as estimate_leg_metrics
 from app.pipeline.metric_engine import CalibrationData, compute_all, derive_overall_risk
 from app.pipeline.pelvis_metrics import estimate as estimate_pelvis_metrics
@@ -32,51 +33,9 @@ def _keypoints_to_json(keypoints: list) -> list[dict]:
     return [asdict(kp) for kp in keypoints]
 
 
-def _flat_twin_landmarks(frame_landmarks: list[dict]) -> list[dict]:
-    twin = []
-    for kp in frame_landmarks:
-        if kp.get("view") != "front":
-            continue
-        twin.append(
-            {
-                "name": kp["name"],
-                "x3d": kp["x"],
-                "y3d": kp["y"],
-                "z3d": 0.0,
-                "confidence": kp.get("confidence", 0.0),
-                "source_view": "front",
-            }
-        )
-    return twin
-
-
-def _rebuild_twin_landmarks(
-    keypoints_3d: list,
-    frame_landmarks: list[dict],
-    prior_twin: list[dict] | None,
-) -> list[dict]:
-    """Rebuild digital-twin landmarks from adjusted 3D reconstruction."""
-    twin = []
-    for kp in keypoints_3d:
-        if kp.source_view != "front" or kp.confidence <= 0.3:
-            continue
-        if kp.x3d is None or kp.y3d is None:
-            continue
-        twin.append(
-            {
-                "name": kp.name,
-                "x3d": kp.x3d,
-                "y3d": kp.y3d,
-                "z3d": kp.z3d if kp.z3d is not None else 0.0,
-                "confidence": kp.confidence,
-                "source_view": "front",
-            }
-        )
-    if twin:
-        return twin
-    if prior_twin:
-        return copy.deepcopy(prior_twin)
-    return _flat_twin_landmarks(frame_landmarks)
+def _rebuild_twin_landmarks(frame_landmarks: list[dict]) -> list[dict]:
+    """Rebuild twin from edited front, side, and back frame keypoints."""
+    return twin_landmarks_from_frame(frame_landmarks)
 
 
 def _persist_twin_landmarks(scan: Scan, twin_landmarks: list[dict]) -> None:
@@ -173,8 +132,7 @@ def recompute_scan_keypoints(
     metrics, keypoints_3d, working_landmarks = compute_metrics_bundle(scan, working_landmarks)
     overall_risk = derive_overall_risk(metrics)
 
-    prior_twin = prior_keypoints.get("twin_landmarks")
-    twin_landmarks = _rebuild_twin_landmarks(keypoints_3d, working_landmarks, prior_twin)
+    twin_landmarks = _rebuild_twin_landmarks(working_landmarks)
 
     audit["adjusted_at"] = datetime.now(UTC).isoformat()
     if doctor_id:
@@ -227,7 +185,7 @@ def reset_scan_keypoints(
     twin_landmarks = (
         copy.deepcopy(original_twin)
         if original_twin
-        else _rebuild_twin_landmarks(keypoints_3d, frame_landmarks, None)
+        else _rebuild_twin_landmarks(frame_landmarks)
     )
 
     audit.pop("adjusted_at", None)

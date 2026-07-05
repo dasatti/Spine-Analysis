@@ -5,7 +5,11 @@ import pytest
 from app.config import settings
 from app.models.patient import Patient, RiskLevel
 from app.models.scan import Scan, ScanStatus
-from app.services.recompute_service import recompute_scan_keypoints, reset_scan_keypoints
+from app.services.recompute_service import (
+    _rebuild_twin_landmarks,
+    recompute_scan_keypoints,
+    reset_scan_keypoints,
+)
 
 
 def _frame_landmarks() -> list[dict]:
@@ -55,6 +59,39 @@ def _scan_and_patient() -> tuple[Scan, Patient]:
         metrics_json={"spinal_curves": {}, "normal_ranges": {}},
     )
     return scan, patient
+
+
+def test_rebuild_twin_uses_front_view_pixels():
+    frame_landmarks = [
+        {"name": "left_shoulder", "x": 200, "y": 140, "confidence": 0.95, "view": "front"},
+        {"name": "right_shoulder", "x": 280, "y": 140, "confidence": 0.95, "view": "front"},
+        {"name": "left_shoulder", "x": 305, "y": 155, "confidence": 0.99, "view": "side"},
+    ]
+    twin = _rebuild_twin_landmarks(frame_landmarks)
+    front = [item for item in twin if item["source_view"] == "front"]
+    side = [item for item in twin if item["source_view"] == "side"]
+    assert len(front) == 2
+    assert len(side) == 1
+    left = next(item for item in front if item["name"] == "left_shoulder")
+    assert left["x3d"] == 200.0
+    assert left["y3d"] == 140.0
+    side_shoulder = side[0]
+    assert side_shoulder["x3d"] == 0.0
+    assert side_shoulder["y3d"] == 155.0
+    assert side_shoulder["z3d"] == 305.0
+
+
+def test_rebuild_twin_reflects_edited_hip_positions():
+    edited_front = [
+        {"name": "left_hip", "x": 230, "y": 235, "confidence": 0.9, "view": "front"},
+        {"name": "right_hip", "x": 270, "y": 220, "confidence": 0.9, "view": "front"},
+    ]
+    twin = _rebuild_twin_landmarks(edited_front)
+    left = next(item for item in twin if item["name"] == "left_hip")
+    assert left["x3d"] == 230.0
+    assert left["y3d"] == 235.0
+    assert left["z3d"] == 0.0
+    assert left["source_view"] == "front"
 
 
 def test_recompute_updates_audit_and_metrics(monkeypatch):

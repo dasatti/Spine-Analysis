@@ -15,6 +15,7 @@ from app.config import settings
 from app.models.patient import Patient, RiskLevel
 from app.models.scan import Scan, ScanStatus
 from app.pipeline.keypoint_normalizer import KeypointNormalizer
+from app.pipeline.landmark_mapping import twin_landmarks_from_frame
 from app.pipeline.loader import get_detector
 from app.pipeline.metric_engine import CalibrationData, compute_all, derive_overall_risk
 from app.pipeline.head_shoulder_metrics import estimate as estimate_head_shoulder_metrics
@@ -101,29 +102,6 @@ def _keypoints_to_json(keypoints: list) -> list[dict]:
     return [asdict(kp) for kp in keypoints]
 
 
-def _flat_twin_landmarks(frame_landmarks: list[dict]) -> list[dict]:
-    """Fallback twin: front-view 2D landmarks laid out flat (z=0).
-
-    Used when the detector provides no metric world landmarks (e.g. YOLO).
-    The viewer auto-centres and scales, so raw pixel units are fine.
-    """
-    twin = []
-    for kp in frame_landmarks:
-        if kp.get("view") != "front":
-            continue
-        twin.append(
-            {
-                "name": kp["name"],
-                "x3d": kp["x"],
-                "y3d": kp["y"],
-                "z3d": 0.0,
-                "confidence": kp.get("confidence", 0.0),
-                "source_view": "front",
-            }
-        )
-    return twin
-
-
 def _worsen_patient_risk(patient: Patient, new_risk_value: str) -> None:
     new_risk = RiskLevel(new_risk_value)
     if RISK_RANK[new_risk] > RISK_RANK[patient.risk_level]:
@@ -167,9 +145,7 @@ def process_scan(self, scan_id: str) -> None:
         _update_scan(session, scan, progress_message="Running keypoint detection...")
         raw_keypoints = detector.detect(frame_paths)
         frame_landmarks = list(raw_keypoints.get("landmarks", []))
-        twin_landmarks = list(raw_keypoints.get("world_landmarks") or []) or _flat_twin_landmarks(
-            frame_landmarks
-        )
+        twin_landmarks = twin_landmarks_from_frame(frame_landmarks)
 
         keypoints = KeypointNormalizer.normalize(raw_keypoints, scan.detector_model)
         _update_scan(session, scan, progress_message="Keypoints normalised. Running 3D reconstruction...")

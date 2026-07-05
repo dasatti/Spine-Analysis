@@ -8,6 +8,7 @@ import RiskLevelBadge from '../components/RiskLevelBadge.vue'
 import ScanMetricsPanel from '../components/ScanMetricsPanel.vue'
 import ScanStatusBadge from '../components/ScanStatusBadge.vue'
 import { useScansStore } from '../stores/scans'
+import { resolveTwinLandmarks } from '../utils/twinLandmarks'
 
 const route = useRoute()
 const scansStore = useScansStore()
@@ -31,12 +32,11 @@ const frameLandmarks = computed(
 const displayLandmarks = computed(() =>
   editMode.value && workingLandmarks.value.length ? workingLandmarks.value : frameLandmarks.value
 )
-const twinLandmarks = computed(() => {
-  const twin = scan.value?.keypoints?.twin_landmarks
-  if (Array.isArray(twin) && twin.length) return twin
-  return scan.value?.keypoints?.landmarks || []
-})
 const adjustmentAudit = computed(() => scan.value?.keypoints?.audit || null)
+const twinLandmarks = computed(() => resolveTwinLandmarks(scan.value?.keypoints))
+const twinViewerKey = computed(
+  () => `${scan.value?.id || 'scan'}-${adjustmentAudit.value?.adjusted_at || 'original'}`
+)
 const twinAdjusted = computed(() => Boolean(adjustmentAudit.value?.twin_rebuilt))
 
 const frameViews = [
@@ -368,7 +368,11 @@ onMounted(async () => {
               </button>
             </div>
 
-            <DigitalTwinViewer v-if="selectedTwinTab === 'twin'" :landmarks="twinLandmarks" />
+            <DigitalTwinViewer
+              v-if="selectedTwinTab === 'twin'"
+              :key="twinViewerKey"
+              :landmarks="twinLandmarks"
+            />
 
             <div v-else class="bg-surface-container border border-outline-variant">
               <div class="flex flex-wrap gap-2 p-4 border-b border-outline-variant">

@@ -45,26 +45,51 @@ const landmarkList = computed(() => {
 })
 
 const usablePoints = computed(() =>
-  landmarkList.value.filter((kp) => kp.x3d != null && kp.confidence >= 0.3)
+  landmarkList.value.filter(
+    (kp) =>
+      kp.x3d != null &&
+      kp.confidence >= 0.3 &&
+      (kp.source_view || 'front') === currentView.value
+  )
 )
 
 const hasPoints = computed(() => usablePoints.value.length > 0)
 
-// Normalise: centre the cloud at the origin and scale body height to 100 units.
+// Normalise: centre on hip midpoint and scale body height to 100 units.
 const normalizedPoints = computed(() => {
   const pts = usablePoints.value
   if (!pts.length) return []
-  const xs = pts.map((kp) => kp.x3d)
-  const ys = pts.map((kp) => kp.y3d)
-  const zs = pts.map((kp) => kp.z3d ?? 0)
-  const center = {
-    x: (Math.min(...xs) + Math.max(...xs)) / 2,
-    y: (Math.min(...ys) + Math.max(...ys)) / 2,
-    z: (Math.min(...zs) + Math.max(...zs)) / 2,
+
+  const byName = Object.fromEntries(pts.map((kp) => [kp.name, kp]))
+  const leftHip = byName.left_hip
+  const rightHip = byName.right_hip
+
+  let center
+  if (leftHip && rightHip) {
+    center = {
+      x: (leftHip.x3d + rightHip.x3d) / 2,
+      y: (leftHip.y3d + rightHip.y3d) / 2,
+      z: ((leftHip.z3d ?? 0) + (rightHip.z3d ?? 0)) / 2,
+    }
+  } else {
+    const xs = pts.map((kp) => kp.x3d)
+    const ys = pts.map((kp) => kp.y3d)
+    const zs = pts.map((kp) => kp.z3d ?? 0)
+    center = {
+      x: (Math.min(...xs) + Math.max(...xs)) / 2,
+      y: (Math.min(...ys) + Math.max(...ys)) / 2,
+      z: (Math.min(...zs) + Math.max(...zs)) / 2,
+    }
   }
+
+  const xs = pts.map((kp) => kp.x3d - center.x)
+  const ys = pts.map((kp) => kp.y3d - center.y)
+  const zs = pts.map((kp) => (kp.z3d ?? 0) - center.z)
   const spanY = Math.max(...ys) - Math.min(...ys)
   const spanX = Math.max(...xs) - Math.min(...xs)
-  const scale = 100 / Math.max(spanY, spanX, 1)
+  const spanZ = Math.max(...zs) - Math.min(...zs)
+  const scale = 100 / Math.max(spanY, spanX, spanZ, 1)
+
   return pts.map((kp) => ({
     name: kp.name,
     // y is down in landmark space; flip so the head is up in the scene.
@@ -198,7 +223,7 @@ function loadScripts() {
   })
 }
 
-watch([landmarkList, showSpineCurve], async () => {
+watch([landmarkList, showSpineCurve, currentView], async () => {
   cleanup()
   await loadScripts()
   initThree()
@@ -213,7 +238,8 @@ onUnmounted(cleanup)
 
 function switchView(view) {
   currentView.value = view
-  setCameraPreset(view)
+  cleanup()
+  loadScripts().then(() => initThree())
 }
 </script>
 
@@ -224,7 +250,7 @@ function switchView(view) {
         v-if="!hasPoints"
         class="absolute inset-0 flex items-center justify-center text-on-surface-variant"
       >
-        3D twin not available for this scan
+        3D twin not available for this {{ currentView }} view
       </div>
     </div>
     <div class="flex items-center justify-between p-4 border-t border-outline-variant">

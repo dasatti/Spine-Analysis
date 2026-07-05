@@ -183,6 +183,47 @@ def world_landmark_dict(
     }
 
 
+def twin_landmarks_from_frame(frame_landmarks: list[dict]) -> list[dict]:
+    """Build digital-twin landmarks from front, side, and back frame keypoints.
+
+    Each view uses its own 2D capture coordinates mapped into a flat 3D plane
+    aligned with that view's camera preset in the viewer:
+
+    - front/back: image (x, y) -> (x3d, y3d, 0)
+    - side: image (x, y) -> (0, y3d, z3d) so the side camera sees depth (z) vs height (y)
+    """
+    twin: list[dict] = []
+    for kp in frame_landmarks:
+        view = kp.get("view") or kp.get("source_view") or ""
+        if view not in {"front", "side", "back"}:
+            continue
+        confidence = float(kp.get("confidence", 0.0))
+        if confidence <= 0.3:
+            continue
+        x = float(kp["x"])
+        y = float(kp["y"])
+        if view == "side":
+            x3d, y3d, z3d = 0.0, y, x
+        else:
+            x3d, y3d, z3d = x, y, 0.0
+        twin.append(
+            {
+                "name": str(kp["name"]),
+                "x3d": round(x3d, 1),
+                "y3d": round(y3d, 1),
+                "z3d": round(z3d, 1),
+                "confidence": confidence,
+                "source_view": view,
+            }
+        )
+    return twin
+
+
+def twin_landmarks_from_front_frame(frame_landmarks: list[dict]) -> list[dict]:
+    """Backward-compatible alias; prefer ``twin_landmarks_from_frame``."""
+    return twin_landmarks_from_frame(frame_landmarks)
+
+
 def build_world_landmarks(
     view: str, points: dict[str, tuple[float, float, float, float] | None]
 ) -> list[dict]:
