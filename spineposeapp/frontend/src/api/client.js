@@ -80,6 +80,8 @@ export const toggleDoctorStatus = (id, isActive) =>
   api.patch(`/admin/doctors/${id}/status`, { is_active: isActive })
 
 export const listDatasetItems = (params) => api.get('/admin/dataset-items', { params })
+export const exportDatasetItemsCsv = (params) =>
+  api.get('/admin/dataset-items/export', { params, responseType: 'blob' })
 export const createDatasetItems = (formData) =>
   api.post('/admin/dataset-items', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

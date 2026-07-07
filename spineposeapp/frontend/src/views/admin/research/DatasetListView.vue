@@ -2,10 +2,12 @@
 import { onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import AdminLayout from '../AdminLayout.vue'
-import { createDatasetItems, listDatasetItems } from '../../../api/client'
+import { createDatasetItems, exportDatasetItemsCsv, listDatasetItems } from '../../../api/client'
 
 const loading = ref(true)
 const creating = ref(false)
+const exporting = ref(false)
+const exportError = ref('')
 const items = ref([])
 const total = ref(0)
 const page = ref(1)
@@ -59,6 +61,33 @@ function statusClass(status) {
 function keypointPreview(item) {
   if (!item.keypoint_count) return '—'
   return `${item.keypoint_count} keypoints`
+}
+
+async function exportCsv() {
+  exportError.value = ''
+  exporting.value = true
+  try {
+    const params = {}
+    if (poseFilter.value) params.pose_type = poseFilter.value
+    if (modelFilter.value) params.detector_model = modelFilter.value
+    if (statusFilter.value) params.status = statusFilter.value
+    const { data } = await exportDatasetItemsCsv(params)
+    const url = URL.createObjectURL(data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `dataset_export_${Date.now()}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    exportError.value =
+      e.response?.data?.message ||
+      (typeof e.response?.data?.detail === 'object' ? e.response?.data?.detail?.message : null) ||
+      'Failed to export CSV.'
+  } finally {
+    exporting.value = false
+  }
 }
 
 async function loadItems() {
@@ -145,15 +174,27 @@ onMounted(loadItems)
             </option>
           </select>
         </div>
-        <button
-          class="bg-primary-container hover:bg-primary text-on-primary-container px-6 py-2.5 font-bold flex items-center gap-2 transition-all active:scale-[0.98]"
-          type="button"
-          @click="showCreate = !showCreate"
-        >
-          <span class="material-symbols-outlined">add_photo_alternate</span>
-          CREATE NEW
-        </button>
+        <div class="flex flex-wrap items-center gap-3">
+          <button
+            class="border border-outline-variant text-on-surface-variant hover:text-on-surface px-5 py-2.5 font-label-caps text-[10px] font-bold flex items-center gap-2 transition-all disabled:opacity-50"
+            type="button"
+            :disabled="exporting || loading"
+            @click="exportCsv"
+          >
+            <span class="material-symbols-outlined text-[18px]">download</span>
+            {{ exporting ? 'EXPORTING...' : 'EXPORT TO CSV' }}
+          </button>
+          <button
+            class="bg-primary-container hover:bg-primary text-on-primary-container px-6 py-2.5 font-bold flex items-center gap-2 transition-all active:scale-[0.98]"
+            type="button"
+            @click="showCreate = !showCreate"
+          >
+            <span class="material-symbols-outlined">add_photo_alternate</span>
+            CREATE NEW
+          </button>
+        </div>
       </div>
+      <p v-if="exportError" class="text-error text-sm">{{ exportError }}</p>
 
       <div
         v-if="showCreate"

@@ -2,6 +2,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -23,6 +24,7 @@ from app.schemas.dataset import (
     DatasetResetKeypointsRequest,
 )
 from app.services import admin_service, dataset_service
+from app.services import dataset_export
 from app.utils.dependencies import get_current_admin
 from app.utils.exceptions import AppError
 
@@ -123,6 +125,24 @@ async def list_dataset_items(
 ):
     return await dataset_service.list_dataset_items(
         db, page, page_size, pose_type, detector_model, status
+    )
+
+
+@router.get("/dataset-items/export")
+async def export_dataset_items(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[Doctor, Depends(get_current_admin)],
+    pose_type: DatasetPoseType | None = None,
+    detector_model: str | None = None,
+    status: DatasetItemStatus | None = None,
+):
+    csv_content, filename = await dataset_export.export_dataset_items_csv(
+        db, pose_type, detector_model, status
+    )
+    return Response(
+        content=csv_content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
