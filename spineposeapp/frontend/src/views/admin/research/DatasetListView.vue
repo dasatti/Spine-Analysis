@@ -19,6 +19,7 @@ const exportError = ref('')
 const items = ref([])
 const total = ref(0)
 const page = ref(1)
+const pageSize = ref(20)
 const totalPages = ref(1)
 
 const datasets = ref([])
@@ -64,6 +65,16 @@ const statusOptions = [
 ]
 
 const hasDatasets = computed(() => datasets.value.length > 0)
+
+const pageStart = computed(() => {
+  if (!total.value) return 0
+  return (page.value - 1) * pageSize.value + 1
+})
+
+const pageEnd = computed(() => {
+  if (!total.value) return 0
+  return Math.min(page.value * pageSize.value, total.value)
+})
 
 function modelLabel(value) {
   return modelOptions.find((m) => m.value === value)?.label || value
@@ -135,7 +146,7 @@ async function exportCsv() {
 async function loadItems() {
   loading.value = true
   try {
-    const params = { page: page.value, page_size: 20, ...filterParams() }
+    const params = { page: page.value, page_size: pageSize.value, ...filterParams() }
     const { data } = await listDatasetItems(params)
     items.value = data.items
     total.value = data.total
@@ -489,6 +500,18 @@ onMounted(async () => {
 
       <div v-if="loading" class="text-on-surface-variant py-12 text-center">Loading dataset items...</div>
       <div v-else class="border border-outline-variant bg-background overflow-hidden">
+        <div
+          v-if="total > 0"
+          class="px-6 py-3 border-b border-outline-variant bg-surface-container-low flex flex-wrap items-center justify-between gap-2"
+        >
+          <p class="font-body-sm text-sm text-on-surface">
+            <span class="font-metric-sm">{{ total }}</span>
+            {{ total === 1 ? 'item' : 'items' }} total
+          </p>
+          <p class="text-sm text-on-surface-variant">
+            Showing {{ pageStart }}–{{ pageEnd }}
+          </p>
+        </div>
         <div class="overflow-x-auto">
           <table class="w-full border-collapse">
             <thead class="bg-[#1A1A1A] border-b border-outline-variant">
@@ -547,8 +570,8 @@ onMounted(async () => {
                     :to="`/admin/research/dataset/${item.id}/adjust`"
                     class="inline-flex items-center gap-1 text-primary hover:underline font-body-sm text-sm"
                   >
-                    <span class="material-symbols-outlined text-[16px]">tune</span>
-                    Adjust Keypoints
+                    <span class="material-symbols-outlined text-[16px]">visibility</span>
+                    View/Adjust
                   </RouterLink>
                   <span v-else class="text-on-surface-variant text-xs">—</span>
                 </td>
@@ -562,8 +585,8 @@ onMounted(async () => {
           </table>
         </div>
         <div
-          v-if="totalPages > 1"
-          class="bg-[#1A1A1A] border-t border-outline-variant px-6 py-4 flex items-center justify-between"
+          v-if="total > 0"
+          class="bg-[#1A1A1A] border-t border-outline-variant px-6 py-4 flex flex-wrap items-center justify-between gap-4"
         >
           <button
             class="font-label-caps text-on-surface-variant hover:text-on-surface disabled:opacity-40"
@@ -573,8 +596,8 @@ onMounted(async () => {
           >
             Previous
           </button>
-          <span class="font-metric-sm text-sm text-on-surface-variant">
-            Page {{ page }} of {{ totalPages }} ({{ total }} items)
+          <span class="font-metric-sm text-sm text-on-surface-variant text-center">
+            Page {{ page }} of {{ totalPages }} · {{ total }} {{ total === 1 ? 'item' : 'items' }}
           </span>
           <button
             class="font-label-caps text-on-surface-variant hover:text-on-surface disabled:opacity-40"
