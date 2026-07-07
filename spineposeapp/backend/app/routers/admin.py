@@ -18,6 +18,7 @@ from app.schemas.dataset import (
     DatasetItemCreateResponse,
     DatasetItemDetailResponse,
     DatasetItemListResponse,
+    DatasetManualLabelsRequest,
     DatasetRecomputeRequest,
     DatasetResetKeypointsRequest,
 )
@@ -156,6 +157,16 @@ async def recompute_dataset_item(
     admin: Annotated[Doctor, Depends(get_current_admin)],
 ):
     return await dataset_service.recompute_dataset_item(db, admin, item_id, payload)
+
+
+@router.put("/dataset-items/{item_id}/manual-labels", response_model=DatasetItemDetailResponse)
+async def save_dataset_manual_labels(
+    item_id: uuid.UUID,
+    payload: DatasetManualLabelsRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[Doctor, Depends(get_current_admin)],
+):
+    return await dataset_service.save_manual_labels(db, admin, item_id, payload)
 
 
 @router.post("/dataset-items/{item_id}/reset-keypoints", response_model=DatasetItemDetailResponse)

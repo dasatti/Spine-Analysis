@@ -89,3 +89,5 @@ export const recomputeDatasetItem = (id, payload) =>
   api.post(`/admin/dataset-items/${id}/recompute`, payload)
 export const resetDatasetItemKeypoints = (id, payload = {}) =>
   api.post(`/admin/dataset-items/${id}/reset-keypoints`, payload)
+export const saveDatasetManualLabels = (id, payload) =>
+  api.put(`/admin/dataset-items/${id}/manual-labels`, payload)

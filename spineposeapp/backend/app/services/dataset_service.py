@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants.manual_labels import MANUAL_LABEL_KEYS
 from app.models.dataset_item import DatasetItem, DatasetItemStatus, DatasetPoseType
 from app.models.doctor import Doctor
 from app.pipeline.landmark_mapping import twin_landmarks_from_frame
@@ -24,6 +25,7 @@ from app.schemas.dataset import (
     DatasetItemDetailResponse,
     DatasetItemListItem,
     DatasetItemListResponse,
+    DatasetManualLabelsRequest,
     DatasetRecomputeRequest,
 )
 from app.services.storage_service import resolve_frame_format, storage_service
@@ -277,6 +279,41 @@ def _recompute_keypoints(
     }
 
 
+def _preserve_manual_labels(existing: dict | None, updated: dict) -> dict:
+    if isinstance(existing, dict) and existing.get("manual_labels"):
+        updated["manual_labels"] = copy.deepcopy(existing["manual_labels"])
+    return updated
+
+
+async def save_manual_labels(
+    db: AsyncSession,
+    admin: Doctor,
+    item_id: uuid.UUID,
+    payload: DatasetManualLabelsRequest,
+) -> DatasetItemDetailResponse:
+    item = await _get_item(db, item_id)
+    if item.status != DatasetItemStatus.ready:
+        raise bad_request("Dataset item is not ready for manual labeling")
+
+    keypoints = copy.deepcopy(item.keypoints_json or {})
+    values = payload.model_dump()
+    new_labels = {
+        key: value for key, value in values.items() if key in MANUAL_LABEL_KEYS and value is not None
+    }
+
+    if new_labels:
+        new_labels["labeled_at"] = datetime.now(UTC).isoformat()
+        new_labels["labeled_by"] = str(admin.id)
+        keypoints["manual_labels"] = new_labels
+    else:
+        keypoints.pop("manual_labels", None)
+
+    item.keypoints_json = keypoints
+    await db.commit()
+    await db.refresh(item)
+    return _item_to_detail(item)
+
+
 async def recompute_dataset_item(
     db: AsyncSession,
     admin: Doctor,
@@ -292,13 +329,16 @@ async def recompute_dataset_item(
         if not lm.get("view"):
             lm["view"] = item.pose_type.value
 
-    item.keypoints_json = _recompute_keypoints(
-        item,
-        frame_landmarks,
-        doctor_id=admin.id,
-        preserve_manual_spine=payload.preserve_manual_spine,
-        refresh_synthetics=payload.refresh_synthetics,
-        note=payload.note,
+    item.keypoints_json = _preserve_manual_labels(
+        item.keypoints_json,
+        _recompute_keypoints(
+            item,
+            frame_landmarks,
+            doctor_id=admin.id,
+            preserve_manual_spine=payload.preserve_manual_spine,
+            refresh_synthetics=payload.refresh_synthetics,
+            note=payload.note,
+        ),
     )
     await db.commit()
     await db.refresh(item)
@@ -330,11 +370,14 @@ async def reset_dataset_item_keypoints(
             }
         ],
     }
-    item.keypoints_json = {
-        "frame_landmarks": copy.deepcopy(original),
-        "twin_landmarks": copy.deepcopy(original_twin),
-        "audit": new_audit,
-    }
+    item.keypoints_json = _preserve_manual_labels(
+        item.keypoints_json,
+        {
+            "frame_landmarks": copy.deepcopy(original),
+            "twin_landmarks": copy.deepcopy(original_twin),
+            "audit": new_audit,
+        },
+    )
     await db.commit()
     await db.refresh(item)
     return _item_to_detail(item)
