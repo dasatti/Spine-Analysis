@@ -76,6 +76,7 @@ class DoctorResponse(BaseModel):
     bio: str | None
     avatar_url: str | None
     is_active: bool
+    role: str
     created_at: datetime
     updated_at: datetime
 

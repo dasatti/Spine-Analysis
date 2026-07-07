@@ -40,6 +40,36 @@ const routes = [
   { path: '/reports', component: () => import('../views/ReportsLibraryView.vue'), meta: { auth: true } },
   { path: '/settings', component: () => import('../views/SettingsView.vue'), meta: { auth: true } },
   { path: '/help', component: () => import('../views/HelpView.vue'), meta: { auth: true } },
+  {
+    path: '/admin',
+    redirect: '/admin/dashboard',
+    meta: { auth: true, requiresAdmin: true },
+  },
+  {
+    path: '/admin/dashboard',
+    component: () => import('../views/admin/AdminDashboardView.vue'),
+    meta: { auth: true, requiresAdmin: true },
+  },
+  {
+    path: '/admin/doctors',
+    component: () => import('../views/admin/AdminDoctorsView.vue'),
+    meta: { auth: true, requiresAdmin: true },
+  },
+  {
+    path: '/admin/doctors/:id/edit',
+    component: () => import('../views/admin/AdminDoctorFormView.vue'),
+    meta: { auth: true, requiresAdmin: true },
+  },
+  {
+    path: '/admin/research/dataset',
+    component: () => import('../views/admin/research/DatasetListView.vue'),
+    meta: { auth: true, requiresAdmin: true },
+  },
+  {
+    path: '/admin/research/dataset/:id/adjust',
+    component: () => import('../views/admin/research/DatasetAdjustView.vue'),
+    meta: { auth: true, requiresAdmin: true },
+  },
 ]
 
 const router = createRouter({
@@ -49,15 +79,21 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const authStore = useAuthStore()
-  if (authStore.token && !authStore.doctor) {
+  const needsAuth = to.matched.some((record) => record.meta.auth)
+  const needsAdmin = to.matched.some((record) => record.meta.requiresAdmin)
+
+  if (authStore.token && (!authStore.doctor || (needsAdmin && authStore.doctor?.role == null))) {
     try {
       await authStore.fetchMe()
     } catch {
       authStore.logout()
     }
   }
-  if (to.meta.auth && !authStore.isAuthenticated) return '/login'
-  if (to.meta.guest && authStore.isAuthenticated) return '/dashboard'
+  if (needsAuth && !authStore.isAuthenticated) return '/login'
+  if (needsAdmin && !authStore.isAdmin) return '/dashboard'
+  if (to.meta.guest && authStore.isAuthenticated) {
+    return authStore.isAdmin ? '/admin/dashboard' : '/dashboard'
+  }
 })
 
 export default router

@@ -38,7 +38,7 @@ async def register_doctor(db: AsyncSession, payload: DoctorRegisterRequest) -> A
     db.add(doctor)
     await db.commit()
     await db.refresh(doctor)
-    token = create_access_token(doctor.id)
+    token = create_access_token(doctor)
     return AuthResponse(
         access_token=token,
         doctor=DoctorResponse.model_validate(doctor),
@@ -54,7 +54,7 @@ async def login_doctor(db: AsyncSession, email: str, password: str) -> AuthRespo
         from app.utils.exceptions import forbidden
 
         raise forbidden()
-    token = create_access_token(doctor.id)
+    token = create_access_token(doctor)
     return AuthResponse(
         access_token=token,
         doctor=DoctorResponse.model_validate(doctor),

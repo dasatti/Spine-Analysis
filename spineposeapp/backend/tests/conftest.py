@@ -96,7 +96,7 @@ from app.testing.payloads import doctor_payload, patient_payload, unique_email
 def truncate_tables() -> None:
     engine = create_engine(SYNC_DATABASE_URL)
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE scans, patients, doctors RESTART IDENTITY CASCADE"))
+        conn.execute(text("TRUNCATE TABLE scans, patients, doctors, dataset_items RESTART IDENTITY CASCADE"))
     engine.dispose()
 
 

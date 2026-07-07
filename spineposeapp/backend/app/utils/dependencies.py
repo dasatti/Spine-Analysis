@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models.doctor import Doctor
+from app.models.doctor import Doctor, DoctorRole
 from app.utils.exceptions import forbidden, unauthorized
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
@@ -26,9 +26,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_access_token(doctor_id: UUID) -> str:
+def create_access_token(doctor: Doctor) -> str:
     expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_expire_minutes)
-    payload = {"sub": str(doctor_id), "exp": expire}
+    payload = {"sub": str(doctor.id), "role": doctor.role, "exp": expire}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
@@ -52,4 +52,12 @@ async def get_current_doctor(
         raise unauthorized()
     if not doctor.is_active:
         raise forbidden()
+    return doctor
+
+
+async def get_current_admin(
+    doctor: Annotated[Doctor, Depends(get_current_doctor)],
+) -> Doctor:
+    if doctor.role != DoctorRole.admin.value:
+        raise forbidden("Admin access required")
     return doctor

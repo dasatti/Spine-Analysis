@@ -16,7 +16,7 @@ async function onSubmit() {
   error.value = ''
   try {
     await authStore.login(email.value, password.value)
-    router.push('/dashboard')
+    router.push(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
   } catch (e) {
     error.value = e.response?.data?.detail || 'Authentication failed. Check your credentials.'
   }

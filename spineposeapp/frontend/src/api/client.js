@@ -20,6 +20,9 @@ export function setupApiClient(authStore) {
         authStore.logout()
         router.push('/login')
       }
+      if (error.response?.status === 403 && router.currentRoute.value.path.startsWith('/admin')) {
+        router.push('/dashboard')
+      }
       if (error.response?.status === 422) {
         const fieldErrors = {}
         for (const item of error.response.data.detail || []) {
@@ -68,3 +71,21 @@ export const resetScanKeypoints = (id, payload = {}) =>
 export const getDashboardSummary = () => api.get('/dashboard/summary')
 export const getSettings = () => api.get('/settings')
 export const updateDetectorSettings = (payload) => api.put('/settings/detector', payload)
+
+export const getAdminAnalytics = () => api.get('/admin/analytics/summary')
+export const listAdminDoctors = (params) => api.get('/admin/doctors', { params })
+export const getAdminDoctor = (id) => api.get(`/admin/doctors/${id}`)
+export const updateAdminDoctor = (id, payload) => api.put(`/admin/doctors/${id}`, payload)
+export const toggleDoctorStatus = (id, isActive) =>
+  api.patch(`/admin/doctors/${id}/status`, { is_active: isActive })
+
+export const listDatasetItems = (params) => api.get('/admin/dataset-items', { params })
+export const createDatasetItems = (formData) =>
+  api.post('/admin/dataset-items', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+export const getDatasetItem = (id) => api.get(`/admin/dataset-items/${id}`)
+export const recomputeDatasetItem = (id, payload) =>
+  api.post(`/admin/dataset-items/${id}/recompute`, payload)
+export const resetDatasetItemKeypoints = (id, payload = {}) =>
+  api.post(`/admin/dataset-items/${id}/reset-keypoints`, payload)

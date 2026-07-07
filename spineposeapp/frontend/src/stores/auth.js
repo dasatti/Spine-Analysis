@@ -17,6 +17,7 @@ export const useAuthStore = defineStore('auth', {
   }),
   getters: {
     isAuthenticated: (state) => Boolean(state.token),
+    isAdmin: (state) => state.doctor?.role === 'admin',
     doctorFullName: (state) =>
       state.doctor ? `${state.doctor.first_name} ${state.doctor.last_name}` : '',
     doctorInitials: (state) => {

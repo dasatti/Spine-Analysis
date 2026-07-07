@@ -138,6 +138,15 @@ class StorageService:
     def frame_key(scan_id: str, view: str, ext: str = "png") -> str:
         return str(PurePosixPath("scans") / scan_id / "frames" / f"{view}.{ext}")
 
+    @staticmethod
+    def dataset_image_key(item_id: str, pose_type: str, ext: str = "png") -> str:
+        return str(PurePosixPath("datasets") / item_id / f"{pose_type}.{ext}")
+
+    def download_bytes(self, key: str) -> bytes:
+        buffer = io.BytesIO()
+        self._client.download_fileobj(self._bucket, key, buffer)
+        return buffer.getvalue()
+
     def find_frame_key(self, prefix: str, view: str) -> str | None:
         for ext in FRAME_EXTENSIONS:
             key = f"{prefix}{view}.{ext}"
