@@ -22,6 +22,51 @@ async def admin_headers(registered_doctor, db_session):
     return {"Authorization": f"Bearer {registered_doctor['access_token']}"}
 
 
+@pytest.fixture
+async def research_dataset(client: AsyncClient, admin_headers):
+    response = await client.post(
+        "/api/v1/admin/datasets",
+        headers=admin_headers,
+        json={"name": "Test Dataset"},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def _upload_form(dataset_id: str) -> dict:
+    return {
+        "dataset_id": dataset_id,
+        "pose_type": "front",
+        "detector_model": "spinepose_v2",
+    }
+
+
+@pytest.mark.asyncio
+async def test_research_dataset_crud(client: AsyncClient, admin_headers):
+    create_resp = await client.post(
+        "/api/v1/admin/datasets",
+        headers=admin_headers,
+        json={"name": "Training Batch A"},
+    )
+    assert create_resp.status_code == 201
+    dataset_id = create_resp.json()["id"]
+
+    list_resp = await client.get("/api/v1/admin/datasets", headers=admin_headers)
+    assert list_resp.status_code == 200
+    assert any(d["id"] == dataset_id for d in list_resp.json()["datasets"])
+
+    update_resp = await client.put(
+        f"/api/v1/admin/datasets/{dataset_id}",
+        headers=admin_headers,
+        json={"name": "Training Batch A (Updated)"},
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["name"] == "Training Batch A (Updated)"
+
+    delete_resp = await client.delete(f"/api/v1/admin/datasets/{dataset_id}", headers=admin_headers)
+    assert delete_resp.status_code == 204
+
+
 @pytest.mark.asyncio
 async def test_dataset_list_requires_admin(client: AsyncClient, auth_headers):
     response = await client.get("/api/v1/admin/dataset-items", headers=auth_headers)
@@ -38,7 +83,7 @@ async def test_dataset_list_empty(client: AsyncClient, admin_headers):
 
 
 @pytest.mark.asyncio
-async def test_create_dataset_items(client: AsyncClient, admin_headers, monkeypatch):
+async def test_create_dataset_items(client: AsyncClient, admin_headers, research_dataset, monkeypatch):
     async def fake_process(db, item):
         item.status = __import__(
             "app.models.dataset_item", fromlist=["DatasetItemStatus"]
@@ -54,7 +99,7 @@ async def test_create_dataset_items(client: AsyncClient, admin_headers, monkeypa
     )
 
     files = {"images": ("test.png", MINIMAL_PNG, "image/png")}
-    data = {"pose_type": "front", "detector_model": "spinepose_v2"}
+    data = _upload_form(research_dataset["id"])
     response = await client.post(
         "/api/v1/admin/dataset-items",
         headers=admin_headers,
@@ -65,11 +110,12 @@ async def test_create_dataset_items(client: AsyncClient, admin_headers, monkeypa
     body = response.json()
     assert body["created_count"] == 1
     assert body["items"][0]["pose_type"] == "front"
+    assert body["items"][0]["dataset_name"] == research_dataset["name"]
     assert body["items"][0]["image_url"]
 
 
 @pytest.mark.asyncio
-async def test_save_manual_labels(client: AsyncClient, admin_headers, monkeypatch):
+async def test_save_manual_labels(client: AsyncClient, admin_headers, research_dataset, monkeypatch):
     async def fake_process(db, item):
         from app.models.dataset_item import DatasetItemStatus
 
@@ -88,7 +134,7 @@ async def test_save_manual_labels(client: AsyncClient, admin_headers, monkeypatc
     create_resp = await client.post(
         "/api/v1/admin/dataset-items",
         headers=admin_headers,
-        data={"pose_type": "front", "detector_model": "spinepose_v2"},
+        data=_upload_form(research_dataset["id"]),
         files=files,
     )
     item_id = create_resp.json()["items"][0]["id"]
@@ -111,7 +157,7 @@ async def test_save_manual_labels(client: AsyncClient, admin_headers, monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_export_dataset_items_csv(client: AsyncClient, admin_headers, monkeypatch):
+async def test_export_dataset_items_csv(client: AsyncClient, admin_headers, research_dataset, monkeypatch):
     async def fake_process(db, item):
         from app.models.dataset_item import DatasetItemStatus
 
@@ -138,7 +184,7 @@ async def test_export_dataset_items_csv(client: AsyncClient, admin_headers, monk
         lambda key, data, ct: key,
     )
     monkeypatch.setattr(
-        "app.services.dataset_export._compute_metrics",
+        "app.services.dataset_export.compute_dataset_metrics",
         lambda frame_landmarks, detector_model: {
             "spinal_curves": {"thoracic_kyphosis_deg": {"value": 42.0}},
             "pelvis_lower_body": {},
@@ -151,7 +197,7 @@ async def test_export_dataset_items_csv(client: AsyncClient, admin_headers, monk
     await client.post(
         "/api/v1/admin/dataset-items",
         headers=admin_headers,
-        data={"pose_type": "front", "detector_model": "spinepose_v2"},
+        data=_upload_form(research_dataset["id"]),
         files=files,
     )
 
@@ -165,9 +211,56 @@ async def test_export_dataset_items_csv(client: AsyncClient, admin_headers, monk
     body = response.text
     assert "item_id" in body.splitlines()[0]
     assert "pose_type" in body.splitlines()[0]
-    assert "detector_model" in body.splitlines()[0]
+    assert "dataset_name" in body.splitlines()[0]
     assert "left_shoulder_x" in body.splitlines()[0]
     assert "thoracic_kyphosis_deg" in body.splitlines()[0]
     assert "manual_thoracic_kyphosis" in body.splitlines()[0]
     assert "10.5" in body
     assert "yes" in body
+
+
+@pytest.mark.asyncio
+async def test_get_dataset_item_includes_metrics(
+    client: AsyncClient, admin_headers, research_dataset, monkeypatch
+):
+    sample_metrics = {
+        "spinal_curves": {"thoracic_kyphosis_deg": {"value": 35.0, "unit": "deg", "availability": "available"}},
+        "pelvis_lower_body": {},
+        "head_shoulders": {},
+        "spine_back": {},
+        "normal_ranges": {},
+    }
+
+    async def fake_process(db, item):
+        from app.models.dataset_item import DatasetItemStatus
+
+        item.status = DatasetItemStatus.ready
+        item.keypoints_json = {
+            "frame_landmarks": [{"name": "left_shoulder", "x": 1, "y": 2, "confidence": 0.9, "view": "front"}],
+            "twin_landmarks": [],
+        }
+        await db.commit()
+        await db.refresh(item)
+
+    monkeypatch.setattr("app.services.dataset_service._process_item_inference", fake_process)
+    monkeypatch.setattr(
+        "app.services.dataset_service.storage_service.upload_bytes",
+        lambda key, data, ct: key,
+    )
+    monkeypatch.setattr(
+        "app.services.dataset_service.metrics_for_item",
+        lambda item: sample_metrics,
+    )
+
+    files = {"images": ("test.png", MINIMAL_PNG, "image/png")}
+    create_resp = await client.post(
+        "/api/v1/admin/dataset-items",
+        headers=admin_headers,
+        data=_upload_form(research_dataset["id"]),
+        files=files,
+    )
+    item_id = create_resp.json()["items"][0]["id"]
+
+    response = await client.get(f"/api/v1/admin/dataset-items/{item_id}", headers=admin_headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["metrics"]["spinal_curves"]["thoracic_kyphosis_deg"]["value"] == 35.0

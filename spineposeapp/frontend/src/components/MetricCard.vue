@@ -19,6 +19,7 @@ const props = defineProps({
   availability: { type: String, default: 'available' },
   sourceView: { type: String, default: '' },
   group: { type: String, default: '' },
+  compact: { type: Boolean, default: false },
 })
 
 const viewLabels = {
@@ -43,23 +44,39 @@ const reason = computed(() => AVAILABILITY_MESSAGES[props.availability] || '')
 </script>
 
 <template>
-  <div class="bg-[#1A1A1A] border border-outline-variant p-4">
-    <div class="flex items-start justify-between mb-3">
-      <div>
-        <p class="font-label-caps text-[10px] text-on-surface-variant">{{ name }}</p>
+  <div
+    :class="[
+      'bg-[#1A1A1A] border border-outline-variant',
+      compact ? 'p-2 min-w-0' : 'p-4',
+    ]"
+  >
+    <div :class="['flex items-start justify-between', compact ? 'mb-1.5 gap-1' : 'mb-3']">
+      <div class="min-w-0 flex-1">
         <p
           :class="[
-            'font-metric-lg text-metric-lg mt-1',
+            'font-label-caps text-on-surface-variant truncate',
+            compact ? 'text-[9px] leading-tight' : 'text-[10px]',
+          ]"
+          :title="name"
+        >
+          {{ name }}
+        </p>
+        <p
+          :class="[
+            'mt-0.5',
+            compact ? 'text-sm font-metric-sm leading-tight' : 'font-metric-lg text-metric-lg mt-1',
             outOfRange ? 'text-[#E8D600]' : 'text-white',
           ]"
         >
-          {{ displayValue }}<span v-if="isAvailable && unit" class="text-sm ml-1">{{ unit }}</span>
+          {{ displayValue }}<span v-if="isAvailable && unit" :class="compact ? 'text-[10px] ml-0.5' : 'text-sm ml-1'">{{ unit }}</span>
         </p>
-        <p v-if="!isAvailable" class="text-on-surface-variant text-xs mt-1">— {{ reason }}</p>
+        <p v-if="!isAvailable" :class="compact ? 'text-[10px] text-on-surface-variant mt-0.5 line-clamp-2' : 'text-on-surface-variant text-xs mt-1'">
+          — {{ reason }}
+        </p>
       </div>
       <span
-        v-if="sourceView"
-        class="text-[10px] font-label-caps text-on-surface-variant/60 px-2 py-1 bg-[#2A2A2A]"
+        v-if="sourceView && !compact"
+        class="text-[10px] font-label-caps text-on-surface-variant/60 px-2 py-1 bg-[#2A2A2A] shrink-0"
       >
         {{ viewLabels[sourceView] || sourceView }}
       </span>

@@ -5,7 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.config import settings
 from app.database import Base
-from app.models import Doctor, Patient, Scan  # noqa: F401
+from app.models import DatasetItem, Doctor, Patient, ResearchDataset, Scan  # noqa: F401
 
 config = context.config
 

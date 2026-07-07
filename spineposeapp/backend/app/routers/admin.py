@@ -22,8 +22,12 @@ from app.schemas.dataset import (
     DatasetManualLabelsRequest,
     DatasetRecomputeRequest,
     DatasetResetKeypointsRequest,
+    ResearchDatasetCreateRequest,
+    ResearchDatasetListResponse,
+    ResearchDatasetResponse,
+    ResearchDatasetUpdateRequest,
 )
-from app.services import admin_service, dataset_service
+from app.services import admin_service, dataset_service, research_dataset_service
 from app.services import dataset_export
 from app.utils.dependencies import get_current_admin
 from app.utils.exceptions import AppError
@@ -113,18 +117,55 @@ async def update_doctor_status(
     )
 
 
+@router.get("/datasets", response_model=ResearchDatasetListResponse)
+async def list_research_datasets(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[Doctor, Depends(get_current_admin)],
+):
+    return await research_dataset_service.list_research_datasets(db)
+
+
+@router.post("/datasets", response_model=ResearchDatasetResponse, status_code=status.HTTP_201_CREATED)
+async def create_research_dataset(
+    payload: ResearchDatasetCreateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[Doctor, Depends(get_current_admin)],
+):
+    return await research_dataset_service.create_research_dataset(db, admin, payload)
+
+
+@router.put("/datasets/{dataset_id}", response_model=ResearchDatasetResponse)
+async def update_research_dataset(
+    dataset_id: uuid.UUID,
+    payload: ResearchDatasetUpdateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[Doctor, Depends(get_current_admin)],
+):
+    return await research_dataset_service.update_research_dataset(db, dataset_id, payload)
+
+
+@router.delete("/datasets/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_research_dataset(
+    dataset_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[Doctor, Depends(get_current_admin)],
+):
+    await research_dataset_service.delete_research_dataset(db, dataset_id)
+
+
 @router.get("/dataset-items", response_model=DatasetItemListResponse)
 async def list_dataset_items(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[Doctor, Depends(get_current_admin)],
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    dataset_id: uuid.UUID | None = None,
     pose_type: DatasetPoseType | None = None,
     detector_model: str | None = None,
     status: DatasetItemStatus | None = None,
 ):
     return await dataset_service.list_dataset_items(
-        db, page, page_size, pose_type, detector_model, status
+        db, page, page_size, dataset_id, pose_type, detector_model, status
     )
 
 
@@ -135,9 +176,10 @@ async def export_dataset_items(
     pose_type: DatasetPoseType | None = None,
     detector_model: str | None = None,
     status: DatasetItemStatus | None = None,
+    dataset_id: uuid.UUID | None = None,
 ):
     csv_content, filename = await dataset_export.export_dataset_items_csv(
-        db, pose_type, detector_model, status
+        db, dataset_id, pose_type, detector_model, status
     )
     return Response(
         content=csv_content,
@@ -150,6 +192,7 @@ async def export_dataset_items(
 async def create_dataset_items(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[Doctor, Depends(get_current_admin)],
+    dataset_id: uuid.UUID = Form(...),
     pose_type: DatasetPoseType = Form(...),
     detector_model: str = Form(...),
     images: list[UploadFile] = File(...),
@@ -157,7 +200,9 @@ async def create_dataset_items(
     if not images:
         raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, "NO_IMAGES", "At least one image is required")
     uploads = [await _read_upload(image) for image in images]
-    return await dataset_service.create_dataset_items(db, admin, uploads, pose_type, detector_model)
+    return await dataset_service.create_dataset_items(
+        db, admin, uploads, dataset_id, pose_type, detector_model
+    )
 
 
 @router.get("/dataset-items/{item_id}", response_model=DatasetItemDetailResponse)

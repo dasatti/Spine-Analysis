@@ -2,14 +2,36 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.dataset_item import DatasetItemStatus, DatasetPoseType
 from app.schemas.scan import RecomputeKeypointsRequest
 
 
+class ResearchDatasetResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    item_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class ResearchDatasetListResponse(BaseModel):
+    datasets: list[ResearchDatasetResponse]
+
+
+class ResearchDatasetCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+
+
+class ResearchDatasetUpdateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+
+
 class DatasetItemListItem(BaseModel):
     id: uuid.UUID
+    dataset_id: uuid.UUID
+    dataset_name: str
     pose_type: DatasetPoseType
     detector_model: str
     status: DatasetItemStatus
@@ -30,6 +52,8 @@ class DatasetItemListResponse(BaseModel):
 
 class DatasetItemDetailResponse(BaseModel):
     id: uuid.UUID
+    dataset_id: uuid.UUID
+    dataset_name: str
     pose_type: DatasetPoseType
     detector_model: str
     status: DatasetItemStatus
@@ -37,6 +61,7 @@ class DatasetItemDetailResponse(BaseModel):
     image_url: str | None
     keypoints: dict | None = None
     keypoints_adjusted: bool = False
+    metrics: dict | None = None
     inference_error: str | None
     created_at: datetime
     updated_at: datetime

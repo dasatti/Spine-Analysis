@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import AdminLayout from '../AdminLayout.vue'
 import DigitalTwinViewer from '../../../components/DigitalTwinViewer.vue'
 import FrameKeypointOverlay from '../../../components/FrameKeypointOverlay.vue'
+import ScanMetricsPanel from '../../../components/ScanMetricsPanel.vue'
 import {
   getDatasetItem,
   recomputeDatasetItem,
@@ -525,6 +526,16 @@ onMounted(loadItem)
           </div>
         </section>
       </div>
+
+        <section class="bg-surface-container border border-outline-variant p-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <h3 class="font-label-caps text-primary">Computed Posture Metrics</h3>
+            <p v-if="dirty" class="text-xs text-on-surface-variant">
+              Reflects saved keypoints — save changes to refresh
+            </p>
+          </div>
+          <ScanMetricsPanel :metrics="item.metrics" layout="columns" />
+        </section>
       </div>
     </div>
   </AdminLayout>

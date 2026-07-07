@@ -12,9 +12,11 @@ from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.constants.manual_labels import MANUAL_LABEL_KEYS
 from app.models.dataset_item import DatasetItem, DatasetItemStatus, DatasetPoseType
+from app.models.research_dataset import ResearchDataset
 from app.models.doctor import Doctor
 from app.pipeline.landmark_mapping import twin_landmarks_from_frame
 from app.pipeline.landmark_refresh import refresh_frame_landmarks
@@ -29,6 +31,7 @@ from app.schemas.dataset import (
     DatasetRecomputeRequest,
 )
 from app.services.storage_service import resolve_frame_format, storage_service
+from app.services.dataset_metrics import metrics_for_item
 from app.utils.exceptions import bad_request, not_found
 
 SUPPORTED_DETECTORS = {"spinepose_v2", "yolo_v8"}
@@ -63,6 +66,8 @@ def _item_to_list_item(item: DatasetItem) -> DatasetItemListItem:
     audit = (item.keypoints_json or {}).get("audit") or {}
     return DatasetItemListItem(
         id=item.id,
+        dataset_id=item.dataset_id,
+        dataset_name=item.dataset.name if item.dataset else "",
         pose_type=item.pose_type,
         detector_model=item.detector_model,
         status=item.status,
@@ -78,6 +83,8 @@ def _item_to_detail(item: DatasetItem) -> DatasetItemDetailResponse:
     audit = (item.keypoints_json or {}).get("audit") or {}
     return DatasetItemDetailResponse(
         id=item.id,
+        dataset_id=item.dataset_id,
+        dataset_name=item.dataset.name if item.dataset else "",
         pose_type=item.pose_type,
         detector_model=item.detector_model,
         status=item.status,
@@ -85,6 +92,7 @@ def _item_to_detail(item: DatasetItem) -> DatasetItemDetailResponse:
         image_url=storage_service.presigned_url(item.image_key) if item.image_key else None,
         keypoints=item.keypoints_json,
         keypoints_adjusted=bool(audit.get("adjusted_at")),
+        metrics=metrics_for_item(item),
         inference_error=item.inference_error,
         created_at=item.created_at,
         updated_at=item.updated_at,
@@ -92,7 +100,11 @@ def _item_to_detail(item: DatasetItem) -> DatasetItemDetailResponse:
 
 
 async def _get_item(db: AsyncSession, item_id: uuid.UUID) -> DatasetItem:
-    result = await db.execute(select(DatasetItem).where(DatasetItem.id == item_id))
+    result = await db.execute(
+        select(DatasetItem)
+        .options(selectinload(DatasetItem.dataset))
+        .where(DatasetItem.id == item_id)
+    )
     item = result.scalar_one_or_none()
     if item is None:
         raise not_found("Dataset item not found")
@@ -103,13 +115,17 @@ async def list_dataset_items(
     db: AsyncSession,
     page: int,
     page_size: int,
+    dataset_id: uuid.UUID | None,
     pose_type: DatasetPoseType | None,
     detector_model: str | None,
     status: DatasetItemStatus | None,
 ) -> DatasetItemListResponse:
-    query = select(DatasetItem)
+    query = select(DatasetItem).options(selectinload(DatasetItem.dataset))
     count_query = select(func.count()).select_from(DatasetItem)
 
+    if dataset_id is not None:
+        query = query.where(DatasetItem.dataset_id == dataset_id)
+        count_query = count_query.where(DatasetItem.dataset_id == dataset_id)
     if pose_type is not None:
         query = query.where(DatasetItem.pose_type == pose_type)
         count_query = count_query.where(DatasetItem.pose_type == pose_type)
@@ -196,9 +212,16 @@ async def create_dataset_items(
     db: AsyncSession,
     admin: Doctor,
     uploads: list[tuple[bytes, str | None, str | None]],
+    dataset_id: uuid.UUID,
     pose_type: DatasetPoseType,
     detector_model: str,
 ) -> DatasetItemCreateResponse:
+    dataset_result = await db.execute(
+        select(ResearchDataset).where(ResearchDataset.id == dataset_id)
+    )
+    if dataset_result.scalar_one_or_none() is None:
+        raise not_found("Dataset not found")
+
     resolved_model = _normalize_detector(detector_model)
     created_items: list[DatasetItem] = []
 
@@ -211,6 +234,7 @@ async def create_dataset_items(
         item = DatasetItem(
             id=item_id,
             created_by_doctor_id=admin.id,
+            dataset_id=dataset_id,
             pose_type=pose_type,
             detector_model=resolved_model,
             status=DatasetItemStatus.pending,
@@ -222,12 +246,18 @@ async def create_dataset_items(
         created_items.append(item)
 
     await db.commit()
+    item_ids = [item.id for item in created_items]
     for item in created_items:
-        await db.refresh(item)
         await _process_item_inference(db, item)
-        await db.refresh(item)
 
-    details = [_item_to_detail(item) for item in created_items]
+    result = await db.execute(
+        select(DatasetItem)
+        .options(selectinload(DatasetItem.dataset))
+        .where(DatasetItem.id.in_(item_ids))
+        .order_by(DatasetItem.created_at.asc())
+    )
+    refreshed_items = list(result.scalars().all())
+    details = [_item_to_detail(item) for item in refreshed_items]
     return DatasetItemCreateResponse(items=details, created_count=len(details))
 
 

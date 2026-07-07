@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -36,6 +36,12 @@ class DatasetItem(Base):
         index=True,
         nullable=True,
     )
+    dataset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("research_datasets.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
     pose_type: Mapped[DatasetPoseType] = mapped_column(
         Enum(DatasetPoseType, name="dataset_pose_type_enum", native_enum=True),
         index=True,
@@ -62,3 +68,5 @@ class DatasetItem(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    dataset: Mapped["ResearchDataset"] = relationship(back_populates="items")  # noqa: F821

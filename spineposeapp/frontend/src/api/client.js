@@ -79,6 +79,11 @@ export const updateAdminDoctor = (id, payload) => api.put(`/admin/doctors/${id}`
 export const toggleDoctorStatus = (id, isActive) =>
   api.patch(`/admin/doctors/${id}/status`, { is_active: isActive })
 
+export const listResearchDatasets = () => api.get('/admin/datasets')
+export const createResearchDataset = (payload) => api.post('/admin/datasets', payload)
+export const updateResearchDataset = (id, payload) => api.put(`/admin/datasets/${id}`, payload)
+export const deleteResearchDataset = (id) => api.delete(`/admin/datasets/${id}`)
+
 export const listDatasetItems = (params) => api.get('/admin/dataset-items', { params })
 export const exportDatasetItemsCsv = (params) =>
   api.get('/admin/dataset-items/export', { params, responseType: 'blob' })

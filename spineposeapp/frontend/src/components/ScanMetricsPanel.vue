@@ -4,6 +4,13 @@ import MetricCard from './MetricCard.vue'
 
 const props = defineProps({
   metrics: { type: Object, default: null },
+  compact: { type: Boolean, default: false },
+  /** 'stacked' = category sections full width; 'columns' = one column per category */
+  layout: {
+    type: String,
+    default: 'stacked',
+    validator: (value) => ['stacked', 'columns'].includes(value),
+  },
 })
 
 const groups = computed(() => {
@@ -66,13 +73,49 @@ const groups = computed(() => {
 
 <template>
   <div v-if="!metrics" class="text-on-surface-variant text-center py-12">No metrics available</div>
-  <div v-else class="space-y-8">
-    <section v-for="group in groups" :key="group.title">
-      <h3 class="font-label-caps text-label-caps text-primary mb-4">{{ group.title }}</h3>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <div
+    v-else-if="layout === 'columns'"
+    class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"
+  >
+    <section v-for="group in groups" :key="group.title" class="min-w-0">
+      <h3 class="font-label-caps text-xs text-primary mb-2">{{ group.title }}</h3>
+      <div class="grid grid-cols-2 gap-2">
         <MetricCard
           v-for="item in group.items"
           :key="item.key"
+          compact
+          :name="item.label"
+          :value="item.value"
+          :unit="item.unit"
+          :normal-min="item.normalMin"
+          :normal-max="item.normalMax"
+          :availability="item.availability"
+          :source-view="item.sourceView"
+        />
+      </div>
+    </section>
+  </div>
+  <div v-else :class="compact ? 'space-y-4' : 'space-y-8'">
+    <section v-for="group in groups" :key="group.title">
+      <h3
+        :class="[
+          'font-label-caps text-label-caps text-primary',
+          compact ? 'text-xs mb-2' : 'mb-4',
+        ]"
+      >
+        {{ group.title }}
+      </h3>
+      <div
+        :class="
+          compact
+            ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2'
+            : 'grid grid-cols-1 md:grid-cols-2 gap-4'
+        "
+      >
+        <MetricCard
+          v-for="item in group.items"
+          :key="item.key"
+          :compact="compact"
           :name="item.label"
           :value="item.value"
           :unit="item.unit"
