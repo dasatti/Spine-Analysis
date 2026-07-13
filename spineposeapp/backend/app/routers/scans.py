@@ -53,6 +53,12 @@ async def _read_frame(upload: UploadFile) -> FrameUpload:
     )
 
 
+async def _read_optional_frame(upload: UploadFile | None) -> FrameUpload | None:
+    if upload is None or not upload.filename:
+        return None
+    return await _read_frame(upload)
+
+
 @router.post("", response_model=ScanCreateResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_scan(
     patient_id: uuid.UUID = Form(...),
@@ -61,22 +67,35 @@ async def create_scan(
     capture_device: str | None = Form(None),
     camera_height_cm: float | None = Form(None),
     camera_distance_cm: float | None = Form(None),
-    frame_front: UploadFile = File(...),
-    frame_side: UploadFile = File(...),
-    frame_back: UploadFile = File(...),
-    frame_adams: UploadFile = File(...),
+    frame_front: UploadFile | None = File(None),
+    frame_side: UploadFile | None = File(None),
+    frame_back: UploadFile | None = File(None),
+    frame_upper_body: UploadFile | None = File(None),
+    frame_adams: UploadFile | None = File(None),
     frame_face: UploadFile | None = File(None),
     current_doctor: Doctor = Depends(get_current_doctor),
     db: AsyncSession = Depends(get_db),
 ) -> ScanCreateResponse:
-    frames = {
-        "front": await _read_frame(frame_front),
-        "side": await _read_frame(frame_side),
-        "back": await _read_frame(frame_back),
-        "adams": await _read_frame(frame_adams),
+    frame_inputs = {
+        "front": frame_front,
+        "side": frame_side,
+        "back": frame_back,
+        "upper_body": frame_upper_body,
+        "adams": frame_adams,
+        "face": frame_face,
     }
-    if frame_face is not None:
-        frames["face"] = await _read_frame(frame_face)
+    frames: dict[str, FrameUpload] = {}
+    for view, upload in frame_inputs.items():
+        frame = await _read_optional_frame(upload)
+        if frame is not None:
+            frames[view] = frame
+
+    if not frames:
+        raise AppError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "NO_FRAMES",
+            "At least one capture view is required",
+        )
 
     return await scan_service.create_scan(
         db,

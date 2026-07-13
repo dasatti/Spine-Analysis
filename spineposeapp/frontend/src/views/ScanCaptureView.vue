@@ -19,8 +19,9 @@ const poses = [
   { key: 'front', label: 'Front View', field: 'frame_front' },
   { key: 'side', label: 'Side View', field: 'frame_side' },
   { key: 'back', label: 'Back View', field: 'frame_back' },
+  { key: 'upper_body', label: 'Upper Body (Side View)', field: 'frame_upper_body' },
   { key: 'adams', label: 'Adams View', field: 'frame_adams' },
-  { key: 'face', label: 'Face View (optional)', field: 'frame_face', optional: true },
+  { key: 'face', label: 'Face View', field: 'frame_face' },
 ]
 
 const files = ref({})
@@ -166,9 +167,9 @@ function onFileChange(field, event) {
   assignFile(field, file)
 }
 
-const canSubmit = computed(() =>
-  ['frame_front', 'frame_side', 'frame_back', 'frame_adams'].every((f) => files.value[f])
-)
+const capturedCount = computed(() => Object.keys(files.value).length)
+
+const canSubmit = computed(() => capturedCount.value >= 1)
 
 async function submitScan() {
   if (!canSubmit.value || !patient.value) return
@@ -357,10 +358,13 @@ onUnmounted(() => {
           <h2 class="font-label-caps text-on-surface-variant mb-1">SCAN PROGRESS</h2>
           <div class="flex items-center justify-between">
             <span class="font-metric-lg text-primary"
-              >{{ Object.keys(files).length }}/{{ poses.length }}</span
+              >{{ capturedCount }}/{{ poses.length }}</span
             >
-            <span class="font-label-caps text-[10px] text-on-surface-variant">POSES</span>
+            <span class="font-label-caps text-[10px] text-on-surface-variant">CAPTURED</span>
           </div>
+          <p class="text-on-surface-variant text-[10px] mt-2 leading-snug">
+            All views are optional. Capture at least one to submit.
+          </p>
         </div>
         <div class="flex-1 p-4 space-y-2 overflow-y-auto">
           <button

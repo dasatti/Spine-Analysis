@@ -29,9 +29,34 @@ const groups = computed(() => {
       normalMin: range.min,
       normalMax: range.max,
       sourceView,
+      metricType: 'numeric',
+      confidence: null,
+    }
+  }
+  const mkCls = (group, key, label, sourceView = 'side') => {
+    const m = props.metrics[group]?.[key]
+    if (!m) return null
+    return {
+      key,
+      label,
+      value: m.value,
+      unit: m.unit,
+      availability: m.availability,
+      confidence: m.confidence ?? null,
+      metricType: m.metric_type || 'classification',
+      normalMin: 0,
+      normalMax: 100,
+      sourceView,
     }
   }
   return [
+    {
+      title: 'AI Classification',
+      items: [
+        mkCls('ai_classification', 'kyphosis', 'Kyphosis', 'side'),
+        mkCls('ai_classification', 'lordosis', 'Lordosis', 'side'),
+      ].filter(Boolean),
+    },
     {
       title: 'Spinal Curves',
       items: [
@@ -67,7 +92,7 @@ const groups = computed(() => {
         mk('spine_back', 'adams_rib_hump_present', 'Adams Rib Hump', 'adams'),
       ].filter(Boolean),
     },
-  ]
+  ].filter((group) => group.items.length > 0)
 })
 </script>
 
@@ -91,6 +116,8 @@ const groups = computed(() => {
           :normal-max="item.normalMax"
           :availability="item.availability"
           :source-view="item.sourceView"
+          :metric-type="item.metricType"
+          :confidence="item.confidence"
         />
       </div>
     </section>
@@ -123,6 +150,8 @@ const groups = computed(() => {
           :normal-max="item.normalMax"
           :availability="item.availability"
           :source-view="item.sourceView"
+          :metric-type="item.metricType"
+          :confidence="item.confidence"
         />
       </div>
     </section>

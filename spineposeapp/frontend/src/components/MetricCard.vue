@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import ClassificationBar from './ClassificationBar.vue'
 import RangeBar from './RangeBar.vue'
 
 const AVAILABILITY_MESSAGES = {
@@ -8,18 +9,21 @@ const AVAILABILITY_MESSAGES = {
   unavailable_no_face_data: 'No face capture',
   unavailable_no_depth: 'Insufficient depth data',
   unavailable_no_sensor: 'Requires pressure sensor',
+  unavailable_no_side_frame: 'No side view frame',
 }
 
 const props = defineProps({
   name: { type: String, required: true },
-  value: { type: [Number, Boolean, null], default: null },
+  value: { type: [Number, Boolean, String, null], default: null },
   unit: { type: String, default: '' },
-  normalMin: { type: Number, required: true },
-  normalMax: { type: Number, required: true },
+  normalMin: { type: Number, default: 0 },
+  normalMax: { type: Number, default: 100 },
   availability: { type: String, default: 'available' },
   sourceView: { type: String, default: '' },
   group: { type: String, default: '' },
   compact: { type: Boolean, default: false },
+  metricType: { type: String, default: 'numeric' },
+  confidence: { type: Number, default: null },
 })
 
 const viewLabels = {
@@ -28,13 +32,31 @@ const viewLabels = {
   back: 'Back View',
   adams: 'Adams View',
   face: 'Face View',
+  upper_body: 'Upper Body (Side View)',
 }
 
+const POSITIVE_CLASS_LABELS = new Set(['kyphosis', 'lordosis'])
+
+const isClassification = computed(() => props.metricType === 'classification')
 const isAvailable = computed(() => props.availability === 'available')
+const classLabel = computed(() => String(props.value || '').toLowerCase())
+const isPositiveClassification = computed(
+  () => isClassification.value && POSITIVE_CLASS_LABELS.has(classLabel.value)
+)
 const displayValue = computed(() => {
   if (!isAvailable.value) return '—'
+  if (isClassification.value) {
+    if (classLabel.value === 'kyphosis') return 'Kyphosis'
+    if (classLabel.value === 'lordosis') return 'Lordosis'
+    if (classLabel.value === 'normal') return 'Normal'
+    return props.value
+  }
   if (typeof props.value === 'boolean') return props.value ? 'Present' : 'Absent'
   return props.value
+})
+const displayConfidence = computed(() => {
+  if (!isAvailable.value || props.confidence == null) return null
+  return `${Math.round(props.confidence * 100)}%`
 })
 const outOfRange = computed(() => {
   if (!isAvailable.value || typeof props.value !== 'number') return false
@@ -65,10 +87,22 @@ const reason = computed(() => AVAILABILITY_MESSAGES[props.availability] || '')
           :class="[
             'mt-0.5',
             compact ? 'text-sm font-metric-sm leading-tight' : 'font-metric-lg text-metric-lg mt-1',
-            outOfRange ? 'text-[#E8D600]' : 'text-white',
+            isClassification
+              ? isPositiveClassification
+                ? 'text-[#DC2626]'
+                : 'text-[#16A34A]'
+              : outOfRange
+                ? 'text-[#E8D600]'
+                : 'text-white',
           ]"
         >
-          {{ displayValue }}<span v-if="isAvailable && unit" :class="compact ? 'text-[10px] ml-0.5' : 'text-sm ml-1'">{{ unit }}</span>
+          {{ displayValue }}<span v-if="isAvailable && unit && !isClassification" :class="compact ? 'text-[10px] ml-0.5' : 'text-sm ml-1'">{{ unit }}</span>
+        </p>
+        <p
+          v-if="isAvailable && displayConfidence"
+          :class="compact ? 'text-[10px] text-on-surface-variant mt-0.5' : 'text-on-surface-variant text-xs mt-1'"
+        >
+          {{ displayConfidence }} confidence
         </p>
         <p v-if="!isAvailable" :class="compact ? 'text-[10px] text-on-surface-variant mt-0.5 line-clamp-2' : 'text-on-surface-variant text-xs mt-1'">
           — {{ reason }}
@@ -81,8 +115,13 @@ const reason = computed(() => AVAILABILITY_MESSAGES[props.availability] || '')
         {{ viewLabels[sourceView] || sourceView }}
       </span>
     </div>
+    <ClassificationBar
+      v-if="isAvailable && isClassification && confidence != null"
+      :confidence="confidence"
+      :positive="isPositiveClassification"
+    />
     <RangeBar
-      v-if="isAvailable && typeof value === 'number'"
+      v-else-if="isAvailable && typeof value === 'number'"
       :value="value"
       :min="normalMin - (normalMax - normalMin)"
       :max="normalMax + (normalMax - normalMin)"

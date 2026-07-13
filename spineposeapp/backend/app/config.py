@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     detector_model: str = "spinepose_v2"
     model_weights_path: str | None = None
+    kyphosis_classifier_weights_path: str | None = None
+    lordosis_classifier_weights_path: str | None = None
     keypoint_confidence_threshold: float = 0.50
     log_level: str = "INFO"
 

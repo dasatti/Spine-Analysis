@@ -185,3 +185,10 @@ def scan_frame_files() -> dict:
         "frame_back": ("back.png", MINIMAL_PNG, "image/png"),
         "frame_adams": ("adams.png", MINIMAL_PNG, "image/png"),
     }
+
+
+@pytest.fixture
+def single_scan_frame_file() -> dict:
+    return {
+        "frame_front": ("front.png", MINIMAL_PNG, "image/png"),
+    }

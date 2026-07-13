@@ -21,12 +21,15 @@ AVAIL_LOW_CONFIDENCE = "unavailable_low_confidence"
 AVAIL_NO_FACE = "unavailable_no_face_data"
 AVAIL_NO_DEPTH = "unavailable_no_depth"
 AVAIL_NO_SENSOR = "unavailable_no_sensor"
+AVAIL_NO_SIDE = "unavailable_no_side_frame"
 
 
-class MetricValue(TypedDict):
-    value: float | bool | None
+class MetricValue(TypedDict, total=False):
+    value: float | bool | str | None
     unit: str
     availability: str
+    confidence: float
+    metric_type: str
 
 
 class NormalRange(TypedDict):
@@ -39,6 +42,7 @@ class MetricsJson(TypedDict):
     pelvis_lower_body: dict[str, MetricValue]
     head_shoulders: dict[str, MetricValue]
     spine_back: dict[str, MetricValue]
+    ai_classification: dict[str, MetricValue]
     normal_ranges: dict[str, NormalRange]
 
 
@@ -418,6 +422,98 @@ def _serialize_metric(result: MetricResult) -> MetricValue:
     }
 
 
+def serialize_ai_classification(
+    class_name: str | None,
+    confidence: float | None,
+    *,
+    availability: str = AVAIL_AVAILABLE,
+) -> MetricValue:
+    return {
+        "value": class_name,
+        "confidence": round(confidence, 4) if confidence is not None else None,
+        "unit": "",
+        "availability": availability,
+        "metric_type": "classification",
+    }
+
+
+def serialize_kyphosis_classification(
+    class_name: str | None,
+    confidence: float | None,
+    *,
+    availability: str = AVAIL_AVAILABLE,
+) -> MetricValue:
+    return serialize_ai_classification(class_name, confidence, availability=availability)
+
+
+def unavailable_ai_classification_metric(availability: str = AVAIL_NO_SIDE) -> MetricValue:
+    return serialize_ai_classification(None, None, availability=availability)
+
+
+def unavailable_kyphosis_metric(availability: str = AVAIL_NO_SIDE) -> MetricValue:
+    return unavailable_ai_classification_metric(availability)
+
+
+def _attach_ai_classification(
+    ai_section: dict[str, MetricValue],
+    metric_key: str,
+    side_image_path: str | None,
+    predict_fn,
+    label: str,
+) -> None:
+    if side_image_path is None:
+        ai_section[metric_key] = unavailable_ai_classification_metric()
+        return
+    try:
+        prediction = predict_fn(side_image_path)
+        ai_section[metric_key] = serialize_ai_classification(
+            prediction.class_name,
+            prediction.confidence,
+        )
+    except Exception as exc:
+        logger.exception(f"{label} classification failed", error=str(exc))
+        ai_section[metric_key] = unavailable_ai_classification_metric(
+            availability=AVAIL_NO_LANDMARK
+        )
+
+
+def merge_ai_classifications(
+    metrics: MetricsJson,
+    side_image_path: str | None,
+) -> MetricsJson:
+    """Run side-view AI classifiers and attach results to metrics_json."""
+    from app.pipeline.kyphosis_classifier import predict_kyphosis
+    from app.pipeline.lordosis_classifier import predict_lordosis
+
+    ai_section = dict(metrics.get("ai_classification") or {})
+    _attach_ai_classification(ai_section, "kyphosis", side_image_path, predict_kyphosis, "Kyphosis")
+    _attach_ai_classification(ai_section, "lordosis", side_image_path, predict_lordosis, "Lordosis")
+
+    metrics = dict(metrics)
+    metrics["ai_classification"] = ai_section
+    return metrics
+
+
+def merge_kyphosis_classification(
+    metrics: MetricsJson,
+    side_image_path: str | None,
+) -> MetricsJson:
+    """Backward-compatible alias for merge_ai_classifications."""
+    return merge_ai_classifications(metrics, side_image_path)
+
+
+def preserve_ai_classification(metrics: MetricsJson, prior: MetricsJson | None) -> MetricsJson:
+    """Keep image-based AI metrics when recomputing landmark-derived metrics."""
+    if not prior:
+        return metrics
+    prior_ai = prior.get("ai_classification")
+    if not prior_ai:
+        return metrics
+    merged = dict(metrics)
+    merged["ai_classification"] = prior_ai
+    return merged
+
+
 def _safe_call(func, *args, **kwargs) -> MetricResult:
     try:
         return func(*args, **kwargs)
@@ -481,6 +577,7 @@ def compute_all(
             "vertebral_rotation_index": _serialize_metric(rotation),
             "adams_rib_hump_present": _serialize_metric(adams),
         },
+        "ai_classification": {},
         "normal_ranges": dict(NORMAL_RANGES),
     }
 
@@ -521,6 +618,17 @@ def derive_overall_risk(metrics: MetricsJson) -> str:
                 elevated = True
             elif pct > 0.0:
                 monitor = True
+
+    for metric_key, positive_label in (("kyphosis", "kyphosis"), ("lordosis", "lordosis")):
+        payload = metrics.get("ai_classification", {}).get(metric_key, {})
+        if payload.get("availability") != AVAIL_AVAILABLE:
+            continue
+        label = str(payload.get("value") or "").lower()
+        confidence = float(payload.get("confidence") or 0.0)
+        if label == positive_label and confidence >= 0.75:
+            elevated = True
+        elif label == positive_label and confidence >= 0.5:
+            monitor = True
 
     if elevated:
         return "elevated"

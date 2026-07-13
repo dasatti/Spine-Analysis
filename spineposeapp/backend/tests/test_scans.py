@@ -30,6 +30,37 @@ async def test_create_scan_202(
 
 
 @pytest.mark.asyncio
+async def test_create_scan_single_frame_202(
+    authed_client: AsyncClient,
+    patient_id: str,
+    single_scan_frame_file: dict,
+):
+    data = {
+        "patient_id": patient_id,
+        "patient_height_cm": "165",
+        "patient_weight_kg": "60",
+    }
+    response = await authed_client.post("/api/v1/scans", data=data, files=single_scan_frame_file)
+    assert response.status_code == 202
+    assert response.json()["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_create_scan_no_frames_422(
+    authed_client: AsyncClient,
+    patient_id: str,
+):
+    data = {
+        "patient_id": patient_id,
+        "patient_height_cm": "165",
+        "patient_weight_kg": "60",
+    }
+    response = await authed_client.post("/api/v1/scans", data=data)
+    assert response.status_code == 422
+    assert response.json()["code"] == "NO_FRAMES"
+
+
+@pytest.mark.asyncio
 async def test_poll_status_returns_progress_message(
     authed_client: AsyncClient,
     patient_id: str,

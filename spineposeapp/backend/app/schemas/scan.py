@@ -28,6 +28,7 @@ class FrameUrls(BaseModel):
     front: str | None = None
     side: str | None = None
     back: str | None = None
+    upper_body: str | None = None
     adams: str | None = None
     face: str | None = None
 

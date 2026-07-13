@@ -18,6 +18,7 @@ from app.pipeline.keypoint_normalizer import KeypointNormalizer
 from app.pipeline.landmark_mapping import twin_landmarks_from_frame
 from app.pipeline.loader import get_detector
 from app.pipeline.metric_engine import CalibrationData, compute_all, derive_overall_risk
+from app.pipeline.metric_engine import merge_ai_classifications, preserve_ai_classification
 from app.pipeline.head_shoulder_metrics import estimate as estimate_head_shoulder_metrics
 from app.pipeline.leg_metrics import estimate as estimate_leg_metrics
 from app.pipeline.pelvis_metrics import estimate as estimate_pelvis_metrics
@@ -85,11 +86,9 @@ def _update_scan(session: Session, scan: Scan, **fields) -> None:
 
 def _download_frames(prefix: str, temp_dir: Path) -> dict[str, str]:
     frame_paths: dict[str, str] = {}
-    for view in ("front", "side", "back", "adams", "face"):
+    for view in ("front", "side", "back", "upper_body", "adams", "face"):
         key = storage_service.find_frame_key(prefix, view)
         if key is None:
-            if view != "face":
-                logger.warning("Missing required frame", view=view, prefix=prefix)
             continue
         ext = key.rsplit(".", 1)[-1]
         local_path = temp_dir / f"{view}.{ext}"
@@ -179,6 +178,8 @@ def process_scan(self, scan_id: str) -> None:
             head_shoulder_metrics,
             spine_back_metrics,
         )
+        _update_scan(session, scan, progress_message="Running AI spine classification...")
+        metrics = merge_ai_classifications(metrics, frame_paths.get("side"))
         overall_risk = derive_overall_risk(metrics)
 
         twin_key = f"scans/{scan_id}/twin/keypoints.json"

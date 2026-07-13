@@ -195,7 +195,7 @@ def twin_landmarks_from_frame(frame_landmarks: list[dict]) -> list[dict]:
     twin: list[dict] = []
     for kp in frame_landmarks:
         view = kp.get("view") or kp.get("source_view") or ""
-        if view not in {"front", "side", "back"}:
+        if view not in {"front", "side", "back", "upper_body"}:
             continue
         confidence = float(kp.get("confidence", 0.0))
         if confidence <= 0.3:

@@ -16,6 +16,7 @@ from app.pipeline.landmark_refresh import refresh_frame_landmarks
 from app.pipeline.landmark_mapping import twin_landmarks_from_frame
 from app.pipeline.leg_metrics import estimate as estimate_leg_metrics
 from app.pipeline.metric_engine import CalibrationData, compute_all, derive_overall_risk
+from app.pipeline.metric_engine import preserve_ai_classification
 from app.pipeline.pelvis_metrics import estimate as estimate_pelvis_metrics
 from app.pipeline.reconstructor_3d import Reconstructor3D
 from app.pipeline.spine_back_metrics import estimate as estimate_spine_back_metrics
@@ -130,6 +131,7 @@ def recompute_scan_keypoints(
         )
 
     metrics, keypoints_3d, working_landmarks = compute_metrics_bundle(scan, working_landmarks)
+    metrics = preserve_ai_classification(metrics, scan.metrics_json)
     overall_risk = derive_overall_risk(metrics)
 
     twin_landmarks = _rebuild_twin_landmarks(working_landmarks)
@@ -180,6 +182,7 @@ def reset_scan_keypoints(
     original_twin = audit.get("original_twin_landmarks")
     frame_landmarks = copy.deepcopy(original)
     metrics, keypoints_3d, frame_landmarks = compute_metrics_bundle(scan, frame_landmarks)
+    metrics = preserve_ai_classification(metrics, scan.metrics_json)
     overall_risk = derive_overall_risk(metrics)
 
     twin_landmarks = (

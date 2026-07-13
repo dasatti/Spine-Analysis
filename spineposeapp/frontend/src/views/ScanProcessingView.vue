@@ -15,6 +15,7 @@ const progress = computed(() => {
   const msg = status.value?.progress_message?.toLowerCase() || ''
   if (status.value?.status === 'completed') return 100
   if (msg.includes('complete')) return 95
+  if (msg.includes('classification') || msg.includes('kyphosis') || msg.includes('lordosis')) return 85
   if (msg.includes('metric')) return 75
   if (msg.includes('3d') || msg.includes('reconstruct')) return 55
   if (msg.includes('keypoint') || msg.includes('detection')) return 35
@@ -34,11 +35,16 @@ const pipelineSteps = computed(() => {
     {
       label: '3D reconstruction',
       active: msg.includes('3d') || msg.includes('reconstruct'),
-      done: msg.includes('metric') || msg.includes('complete'),
+      done: msg.includes('metric') || msg.includes('classification') || msg.includes('kyphosis') || msg.includes('lordosis') || msg.includes('complete'),
     },
     {
       label: 'Computing posture metrics',
-      active: msg.includes('metric'),
+      active: msg.includes('metric') && !msg.includes('classification') && !msg.includes('kyphosis') && !msg.includes('lordosis'),
+      done: msg.includes('classification') || msg.includes('kyphosis') || msg.includes('lordosis') || msg.includes('complete'),
+    },
+    {
+      label: 'Running AI spine classification',
+      active: msg.includes('classification') || msg.includes('kyphosis') || msg.includes('lordosis'),
       done: msg.includes('complete'),
     },
   ]

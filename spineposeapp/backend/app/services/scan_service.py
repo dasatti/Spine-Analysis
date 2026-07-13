@@ -66,7 +66,7 @@ async def _get_owned_scan(db: AsyncSession, doctor: Doctor, scan_id: uuid.UUID) 
 
 def _frame_urls(scan_id: uuid.UUID) -> FrameUrls:
     prefix = storage_service.scan_frames_prefix(str(scan_id))
-    views = ["front", "side", "back", "adams", "face"]
+    views = ["front", "side", "back", "upper_body", "adams", "face"]
     urls = {}
     for view in views:
         key = storage_service.find_frame_key(prefix, view)

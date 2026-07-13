@@ -23,8 +23,37 @@ const workingLandmarks = ref([])
 const dirty = ref(false)
 const saving = ref(false)
 const editError = ref('')
-const undoArmed = ref({ front: true, side: true, back: true, adams: true, face: true })
-const viewUndoStacks = ref({ front: [], side: [], back: [], adams: [], face: [] })
+const undoArmed = ref({
+  front: true,
+  side: true,
+  back: true,
+  upper_body: true,
+  adams: true,
+  face: true,
+})
+const viewUndoStacks = ref({
+  front: [],
+  side: [],
+  back: [],
+  upper_body: [],
+  adams: [],
+  face: [],
+})
+
+const ALL_FRAME_VIEWS = [
+  { key: 'front', label: 'Front' },
+  { key: 'side', label: 'Side' },
+  { key: 'back', label: 'Back' },
+  { key: 'upper_body', label: 'Upper Body (Side View)' },
+  { key: 'adams', label: 'Adams' },
+  { key: 'face', label: 'Face' },
+]
+const selectedFrameView = ref('front')
+
+const frameViews = computed(() => {
+  const urls = scan.value?.frame_urls || {}
+  return ALL_FRAME_VIEWS.filter((view) => urls[view.key])
+})
 
 const frameLandmarks = computed(
   () => scan.value?.keypoints?.frame_landmarks || scan.value?.keypoints?.landmarks || []
@@ -38,14 +67,6 @@ const twinViewerKey = computed(
   () => `${scan.value?.id || 'scan'}-${adjustmentAudit.value?.adjusted_at || 'original'}`
 )
 const twinAdjusted = computed(() => Boolean(adjustmentAudit.value?.twin_rebuilt))
-
-const frameViews = [
-  { key: 'front', label: 'Front' },
-  { key: 'side', label: 'Side' },
-  { key: 'back', label: 'Back' },
-  { key: 'adams', label: 'Adams' },
-]
-const selectedFrameView = ref('front')
 
 const twinTabs = [
   { key: 'twin', label: 'Digital Twin' },
@@ -181,6 +202,18 @@ function formatDate(iso) {
     minute: '2-digit',
   })
 }
+
+watch(
+  frameViews,
+  (views) => {
+    if (!views.length) return
+    if (!views.some((view) => view.key === selectedFrameView.value)) {
+      selectedFrameView.value = views[0].key
+      keypointViewFilter.value = views[0].key
+    }
+  },
+  { immediate: true }
+)
 
 watch(
   () => scan.value?.id,
