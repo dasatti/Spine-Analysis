@@ -15,13 +15,13 @@ const sections = [
     id: 'scan-capture',
     title: 'Scan Capture Protocol',
     icon: 'biotech',
-    content: `Capture any combination of poses: Front, Side, Back, Upper Body (Side View), Adams forward bend, and Face. Upload RGBD frames (PNG, JPEG, or TIFF). Ensure 3m clearance, even lighting (500–750 lux), and plain background. At least one view is required to submit a scan.`,
+    content: `Capture any combination of poses: Front, Side, Back, Adams forward bend, and Face. Upload RGBD frames (PNG, JPEG, or TIFF). Ensure 3m clearance, even lighting (500–750 lux), and plain background. At least one view is required to submit a scan.`,
   },
   {
     id: 'metrics',
     title: 'Understanding Metrics',
     icon: 'analytics',
-    content: `SpinePose computes spinal curves (thoracic kyphosis, lumbar lordosis), pelvis alignment, head/shoulder posture, back asymmetry indices, and AI kyphosis/lordosis classification from the side view. Values outside the normal range are highlighted in yellow. Unavailable metrics indicate missing landmarks, low confidence, or missing capture views.`,
+    content: `SpinePose computes spinal curves (thoracic kyphosis, lumbar lordosis), pelvis alignment, head/shoulder posture, back asymmetry indices, and AI kyphosis/lordosis classification from the side view plus AI scoliosis screening from the back view. Values outside the normal range are highlighted in yellow. Unavailable metrics indicate missing landmarks, low confidence, or missing capture views.`,
   },
   {
     id: 'reports',

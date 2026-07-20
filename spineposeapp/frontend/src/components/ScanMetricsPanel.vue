@@ -43,6 +43,8 @@ const groups = computed(() => {
       unit: m.unit,
       availability: m.availability,
       confidence: m.confidence ?? null,
+      lateralIndex: m.lateral_index ?? null,
+      keypointCount: m.keypoint_count ?? null,
       metricType: m.metric_type || 'classification',
       normalMin: 0,
       normalMax: 100,
@@ -55,6 +57,7 @@ const groups = computed(() => {
       items: [
         mkCls('ai_classification', 'kyphosis', 'Kyphosis', 'side'),
         mkCls('ai_classification', 'lordosis', 'Lordosis', 'side'),
+        mkCls('ai_classification', 'scoliosis', 'Scoliosis', 'back'),
       ].filter(Boolean),
     },
     {
@@ -62,6 +65,7 @@ const groups = computed(() => {
       items: [
         mk('spinal_curves', 'thoracic_kyphosis_deg', 'Thoracic Kyphosis'),
         mk('spinal_curves', 'lumbar_lordosis_deg', 'Lumbar Lordosis'),
+        mkCls('spinal_curves', 'keypoint_scoliosis', 'Scoliosis (Keypoint)', 'back'),
       ].filter(Boolean),
     },
     {
@@ -118,6 +122,8 @@ const groups = computed(() => {
           :source-view="item.sourceView"
           :metric-type="item.metricType"
           :confidence="item.confidence"
+          :lateral-index="item.lateralIndex"
+          :keypoint-count="item.keypointCount"
         />
       </div>
     </section>
@@ -152,6 +158,8 @@ const groups = computed(() => {
           :source-view="item.sourceView"
           :metric-type="item.metricType"
           :confidence="item.confidence"
+          :lateral-index="item.lateralIndex"
+          :keypoint-count="item.keypointCount"
         />
       </div>
     </section>

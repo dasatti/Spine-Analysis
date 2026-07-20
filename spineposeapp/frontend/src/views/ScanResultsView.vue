@@ -86,6 +86,24 @@ const currentFrameUrl = computed(
   () => scan.value?.frame_urls?.[selectedFrameView.value] || null
 )
 
+const scoliosisDetectionOverlay = computed(() => {
+  const metric = scan.value?.metrics?.ai_classification?.scoliosis
+  if (!metric?.detections?.length) return null
+  return {
+    boxes: metric.detections,
+    imageWidth: metric.image_width,
+    imageHeight: metric.image_height,
+  }
+})
+
+const activeDetectionBoxes = computed(() =>
+  selectedFrameView.value === 'back' ? scoliosisDetectionOverlay.value?.boxes || [] : []
+)
+
+const activeDetectionImageSize = computed(() =>
+  selectedFrameView.value === 'back' ? scoliosisDetectionOverlay.value : null
+)
+
 const canUndoView = computed(
   () => (viewUndoStacks.value[selectedFrameView.value] || []).length > 0
 )
@@ -371,6 +389,8 @@ onMounted(async () => {
               :landmarks="displayLandmarks"
               :view="selectedFrameView"
               :edit-mode="editMode"
+              :detection-boxes="activeDetectionBoxes"
+              :detection-image-size="activeDetectionImageSize"
               @landmark-move="onLandmarkMove"
               @undo-request="onUndoRequest"
               @drag-end="onDragEnd"

@@ -22,6 +22,8 @@ AVAIL_NO_FACE = "unavailable_no_face_data"
 AVAIL_NO_DEPTH = "unavailable_no_depth"
 AVAIL_NO_SENSOR = "unavailable_no_sensor"
 AVAIL_NO_SIDE = "unavailable_no_side_frame"
+AVAIL_NO_BACK = "unavailable_no_back_frame"
+AVAIL_NO_SCOLIOSIS_VIEWS = "unavailable_no_scoliosis_views"
 
 
 class MetricValue(TypedDict, total=False):
@@ -30,6 +32,13 @@ class MetricValue(TypedDict, total=False):
     availability: str
     confidence: float
     metric_type: str
+    lateral_index: float
+    keypoint_count: int
+    detections: list[dict]
+    composite_score: float
+    signals: dict
+    image_width: int
+    image_height: int
 
 
 class NormalRange(TypedDict):
@@ -427,14 +436,30 @@ def serialize_ai_classification(
     confidence: float | None,
     *,
     availability: str = AVAIL_AVAILABLE,
+    lateral_index: float | None = None,
+    keypoint_count: int | None = None,
+    detections: list[dict] | None = None,
+    image_width: int | None = None,
+    image_height: int | None = None,
 ) -> MetricValue:
-    return {
+    payload: MetricValue = {
         "value": class_name,
         "confidence": round(confidence, 4) if confidence is not None else None,
         "unit": "",
         "availability": availability,
         "metric_type": "classification",
     }
+    if lateral_index is not None:
+        payload["lateral_index"] = round(lateral_index, 4)
+    if keypoint_count is not None:
+        payload["keypoint_count"] = keypoint_count
+    if detections is not None:
+        payload["detections"] = detections
+    if image_width is not None:
+        payload["image_width"] = image_width
+    if image_height is not None:
+        payload["image_height"] = image_height
+    return payload
 
 
 def serialize_kyphosis_classification(
@@ -448,6 +473,26 @@ def serialize_kyphosis_classification(
 
 def unavailable_ai_classification_metric(availability: str = AVAIL_NO_SIDE) -> MetricValue:
     return serialize_ai_classification(None, None, availability=availability)
+
+
+def unavailable_scoliosis_metric(availability: str = AVAIL_NO_BACK) -> MetricValue:
+    return serialize_ai_classification(None, None, availability=availability)
+
+
+def compute_keypoint_scoliosis_metric(
+    spine_back_metrics: SpineBackMetrics | None,
+    pelvic_obliquity_mm: float | None = None,
+) -> MetricValue:
+    """Keypoint-based scoliosis screening from back and Adams pose landmarks."""
+    from app.pipeline.keypoint_scoliosis import estimate_keypoint_scoliosis
+
+    result = estimate_keypoint_scoliosis(spine_back_metrics, pelvic_obliquity_mm)
+    if result is None:
+        return serialize_ai_classification(None, None, availability=AVAIL_NO_SCOLIOSIS_VIEWS)
+    payload = serialize_ai_classification(result.class_name, result.confidence)
+    payload["composite_score"] = result.composite_score
+    payload["signals"] = result.signals
+    return payload
 
 
 def unavailable_kyphosis_metric(availability: str = AVAIL_NO_SIDE) -> MetricValue:
@@ -477,17 +522,54 @@ def _attach_ai_classification(
         )
 
 
+def _attach_scoliosis_detection(
+    ai_section: dict[str, MetricValue],
+    back_image_path: str | None,
+) -> None:
+    from app.pipeline.scoliosis_detector import predict_scoliosis
+
+    if back_image_path is None:
+        ai_section["scoliosis"] = unavailable_scoliosis_metric()
+        return
+    try:
+        prediction = predict_scoliosis(back_image_path)
+        ai_section["scoliosis"] = serialize_ai_classification(
+            prediction.class_name,
+            prediction.confidence,
+            lateral_index=prediction.lateral_index,
+            keypoint_count=prediction.keypoint_count,
+            detections=[
+                {
+                    "class": box.class_name,
+                    "x1": round(box.x1, 2),
+                    "y1": round(box.y1, 2),
+                    "x2": round(box.x2, 2),
+                    "y2": round(box.y2, 2),
+                    "confidence": round(box.confidence, 4),
+                }
+                for box in prediction.detections
+            ],
+            image_width=prediction.image_width,
+            image_height=prediction.image_height,
+        )
+    except Exception as exc:
+        logger.exception("Scoliosis detection failed", error=str(exc))
+        ai_section["scoliosis"] = unavailable_scoliosis_metric(availability=AVAIL_NO_LANDMARK)
+
+
 def merge_ai_classifications(
     metrics: MetricsJson,
     side_image_path: str | None,
+    back_image_path: str | None = None,
 ) -> MetricsJson:
-    """Run side-view AI classifiers and attach results to metrics_json."""
+    """Run AI classifiers/detectors and attach results to metrics_json."""
     from app.pipeline.kyphosis_classifier import predict_kyphosis
     from app.pipeline.lordosis_classifier import predict_lordosis
 
     ai_section = dict(metrics.get("ai_classification") or {})
     _attach_ai_classification(ai_section, "kyphosis", side_image_path, predict_kyphosis, "Kyphosis")
     _attach_ai_classification(ai_section, "lordosis", side_image_path, predict_lordosis, "Lordosis")
+    _attach_scoliosis_detection(ai_section, back_image_path)
 
     metrics = dict(metrics)
     metrics["ai_classification"] = ai_section
@@ -553,10 +635,14 @@ def compute_all(
     rotation = _safe_call(compute_vertebral_rotation, landmarks, depth_map, spine_back_metrics)
     adams = _safe_call(compute_adams_rib_hump, landmarks, depth_map, spine_back_metrics)
 
+    pelvic_obliquity_mm = pelvis_metrics.obliquity_mm if pelvis_metrics else None
+    keypoint_scoliosis = compute_keypoint_scoliosis_metric(spine_back_metrics, pelvic_obliquity_mm)
+
     return {
         "spinal_curves": {
             "thoracic_kyphosis_deg": _serialize_metric(thoracic),
             "lumbar_lordosis_deg": _serialize_metric(lumbar),
+            "keypoint_scoliosis": keypoint_scoliosis,
         },
         "pelvis_lower_body": {
             "pelvic_tilt_sagittal_deg": _serialize_metric(pelvic_tilt),
@@ -605,6 +691,8 @@ def derive_overall_risk(metrics: MetricsJson) -> str:
         for key, payload in section_metrics.items():
             if key.endswith("_present"):
                 continue
+            if payload.get("metric_type") == "classification":
+                continue
             if payload.get("availability") != AVAIL_AVAILABLE:
                 continue
             value = payload.get("value")
@@ -619,7 +707,11 @@ def derive_overall_risk(metrics: MetricsJson) -> str:
             elif pct > 0.0:
                 monitor = True
 
-    for metric_key, positive_label in (("kyphosis", "kyphosis"), ("lordosis", "lordosis")):
+    for metric_key, positive_label in (
+        ("kyphosis", "kyphosis"),
+        ("lordosis", "lordosis"),
+        ("scoliosis", "scoliosis"),
+    ):
         payload = metrics.get("ai_classification", {}).get(metric_key, {})
         if payload.get("availability") != AVAIL_AVAILABLE:
             continue
@@ -628,6 +720,15 @@ def derive_overall_risk(metrics: MetricsJson) -> str:
         if label == positive_label and confidence >= 0.75:
             elevated = True
         elif label == positive_label and confidence >= 0.5:
+            monitor = True
+
+    kp_scoliosis = metrics.get("spinal_curves", {}).get("keypoint_scoliosis", {})
+    if kp_scoliosis.get("availability") == AVAIL_AVAILABLE:
+        label = str(kp_scoliosis.get("value") or "").lower()
+        confidence = float(kp_scoliosis.get("confidence") or 0.0)
+        if label == "scoliosis" and confidence >= 0.75:
+            elevated = True
+        elif label == "scoliosis" and confidence >= 0.5:
             monitor = True
 
     if elevated:

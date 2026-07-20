@@ -338,7 +338,7 @@ watch(patientSearch, () => {
       <div v-else-if="step === 4" class="max-w-3xl mx-auto text-center space-y-6">
         <h2 class="font-headline-lg text-headline-lg">Capture Poses</h2>
         <p class="text-on-surface-variant">
-          You will capture Front, Side, Back, Upper Body (Side View), Adams, and Face views on the next screen.
+          You will capture Front, Side, Back, Adams, and Face views on the next screen.
         </p>
         <p class="font-metric-sm text-primary">
           All views are optional — capture at least one to submit.

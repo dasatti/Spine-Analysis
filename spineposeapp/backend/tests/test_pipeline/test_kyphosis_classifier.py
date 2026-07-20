@@ -7,6 +7,7 @@ from app.pipeline.kyphosis_classifier import predict_kyphosis, resolve_weights_p
 from app.pipeline.lordosis_classifier import predict_lordosis
 from app.pipeline.side_view_classifier import ClassificationPrediction
 from app.pipeline.metric_engine import (
+    AVAIL_NO_BACK,
     AVAIL_NO_SIDE,
     merge_ai_classifications,
     merge_kyphosis_classification,
@@ -40,6 +41,7 @@ def test_merge_ai_classifications_without_side_frame():
     merged = merge_ai_classifications(metrics, None)
     assert merged["ai_classification"]["kyphosis"]["availability"] == AVAIL_NO_SIDE
     assert merged["ai_classification"]["lordosis"]["availability"] == AVAIL_NO_SIDE
+    assert merged["ai_classification"]["scoliosis"]["availability"] == AVAIL_NO_BACK
 
 
 @patch("app.pipeline.lordosis_classifier.predict_lordosis")

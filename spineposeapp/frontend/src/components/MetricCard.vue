@@ -10,6 +10,8 @@ const AVAILABILITY_MESSAGES = {
   unavailable_no_depth: 'Insufficient depth data',
   unavailable_no_sensor: 'Requires pressure sensor',
   unavailable_no_side_frame: 'No side view frame',
+  unavailable_no_back_frame: 'No back view frame',
+  unavailable_no_scoliosis_views: 'No back or Adams view',
 }
 
 const props = defineProps({
@@ -24,6 +26,8 @@ const props = defineProps({
   compact: { type: Boolean, default: false },
   metricType: { type: String, default: 'numeric' },
   confidence: { type: Number, default: null },
+  lateralIndex: { type: Number, default: null },
+  keypointCount: { type: Number, default: null },
 })
 
 const viewLabels = {
@@ -35,7 +39,7 @@ const viewLabels = {
   upper_body: 'Upper Body (Side View)',
 }
 
-const POSITIVE_CLASS_LABELS = new Set(['kyphosis', 'lordosis'])
+const POSITIVE_CLASS_LABELS = new Set(['kyphosis', 'lordosis', 'scoliosis'])
 
 const isClassification = computed(() => props.metricType === 'classification')
 const isAvailable = computed(() => props.availability === 'available')
@@ -48,6 +52,7 @@ const displayValue = computed(() => {
   if (isClassification.value) {
     if (classLabel.value === 'kyphosis') return 'Kyphosis'
     if (classLabel.value === 'lordosis') return 'Lordosis'
+    if (classLabel.value === 'scoliosis') return 'Scoliosis'
     if (classLabel.value === 'normal') return 'Normal'
     return props.value
   }
@@ -103,6 +108,12 @@ const reason = computed(() => AVAILABILITY_MESSAGES[props.availability] || '')
           :class="compact ? 'text-[10px] text-on-surface-variant mt-0.5' : 'text-on-surface-variant text-xs mt-1'"
         >
           {{ displayConfidence }} confidence
+        </p>
+        <p
+          v-if="isAvailable && lateralIndex != null"
+          :class="compact ? 'text-[10px] text-on-surface-variant/80 mt-0.5' : 'text-on-surface-variant/80 text-[10px] mt-1'"
+        >
+          Lateral index {{ lateralIndex.toFixed(3) }}<span v-if="keypointCount != null"> · {{ keypointCount }} keypoints</span>
         </p>
         <p v-if="!isAvailable" :class="compact ? 'text-[10px] text-on-surface-variant mt-0.5 line-clamp-2' : 'text-on-surface-variant text-xs mt-1'">
           — {{ reason }}

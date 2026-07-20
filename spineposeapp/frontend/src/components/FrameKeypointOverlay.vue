@@ -6,6 +6,8 @@ const props = defineProps({
   landmarks: { type: Array, default: () => [] },
   view: { type: String, default: 'front' },
   editMode: { type: Boolean, default: false },
+  detectionBoxes: { type: Array, default: () => [] },
+  detectionImageSize: { type: Object, default: null },
 })
 
 const emit = defineEmits(['landmark-move', 'undo-request', 'drag-end'])
@@ -214,6 +216,38 @@ const boneStrokeWidth = computed(() =>
   Math.max(1.5, naturalSize.value.width / 500)
 )
 
+const detectionStrokeWidth = computed(() =>
+  Math.max(2, naturalSize.value.width / 400)
+)
+
+const scaledDetectionBoxes = computed(() => {
+  if (!props.detectionBoxes?.length || !naturalSize.value.width) return []
+  const refW = props.detectionImageSize?.imageWidth || props.detectionImageSize?.width
+  const refH = props.detectionImageSize?.imageHeight || props.detectionImageSize?.height
+  const scaleX =
+    refW && refW > 0 ? naturalSize.value.width / refW : 1
+  const scaleY =
+    refH && refH > 0 ? naturalSize.value.height / refH : 1
+  return props.detectionBoxes.map((box) => ({
+    ...box,
+    x1: box.x1 * scaleX,
+    y1: box.y1 * scaleY,
+    x2: box.x2 * scaleX,
+    y2: box.y2 * scaleY,
+    className: (box.class || box.class_name || '').toLowerCase(),
+  }))
+})
+
+const hasDetectionOverlay = computed(() => scaledDetectionBoxes.value.length > 0)
+
+function boxStroke(className) {
+  return className === 'back' ? '#06B6D4' : '#22C55E'
+}
+
+function boxFill(className) {
+  return className === 'back' ? 'rgba(6, 182, 212, 0.14)' : 'rgba(34, 197, 94, 0.22)'
+}
+
 watch(() => props.imageUrl, () => {
   naturalSize.value = { width: 0, height: 0 }
   imageLoadFailed.value = false
@@ -240,12 +274,24 @@ watch(() => props.editMode, (enabled) => {
       @error="onImageError"
     />
     <svg
-      v-if="imageUrl && overlayReady && boneSegments.length"
+      v-if="imageUrl && overlayReady && (boneSegments.length || hasDetectionOverlay)"
       class="absolute pointer-events-none"
       :style="svgStyle"
       :viewBox="`0 0 ${naturalSize.width} ${naturalSize.height}`"
       preserveAspectRatio="none"
     >
+      <rect
+        v-for="(box, i) in scaledDetectionBoxes"
+        :key="`det-${i}`"
+        :x="box.x1"
+        :y="box.y1"
+        :width="Math.max(box.x2 - box.x1, 1)"
+        :height="Math.max(box.y2 - box.y1, 1)"
+        :stroke="boxStroke(box.className)"
+        :fill="boxFill(box.className)"
+        :stroke-width="detectionStrokeWidth"
+        stroke-dasharray="6 4"
+      />
       <line
         v-for="(seg, i) in boneSegments"
         :key="`bone-${i}`"
@@ -283,13 +329,21 @@ watch(() => props.editMode, (enabled) => {
       DRAG KEYPOINTS TO ADJUST
     </div>
     <div
+      v-if="hasDetectionOverlay"
+      class="absolute bottom-2 left-2 z-20 text-[10px] font-label-caps bg-black/75 text-on-surface px-2 py-1.5 space-y-1"
+    >
+      <p class="text-primary">Scoliosis AI detections</p>
+      <p><span class="inline-block w-2 h-2 border border-[#06B6D4] bg-[#06B6D4]/20 mr-1"></span>Back region</p>
+      <p><span class="inline-block w-2 h-2 border border-[#22C55E] bg-[#22C55E]/25 mr-1"></span>KeyPoint</p>
+    </div>
+    <div
       v-if="!imageUrl || imageLoadFailed"
       class="absolute inset-0 flex items-center justify-center text-on-surface-variant text-sm px-6 text-center"
     >
       {{ imageLoadFailed ? 'Frame image could not be loaded' : 'Frame not available' }}
     </div>
     <div
-      v-else-if="!viewLandmarks.length"
+      v-else-if="!viewLandmarks.length && !hasDetectionOverlay"
       class="absolute bottom-2 left-2 text-[10px] font-label-caps bg-black/70 text-on-surface-variant px-2 py-1"
     >
       No keypoints detected for this view

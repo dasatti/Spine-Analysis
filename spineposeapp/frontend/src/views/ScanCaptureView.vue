@@ -19,7 +19,6 @@ const poses = [
   { key: 'front', label: 'Front View', field: 'frame_front' },
   { key: 'side', label: 'Side View', field: 'frame_side' },
   { key: 'back', label: 'Back View', field: 'frame_back' },
-  { key: 'upper_body', label: 'Upper Body (Side View)', field: 'frame_upper_body' },
   { key: 'adams', label: 'Adams View', field: 'frame_adams' },
   { key: 'face', label: 'Face View', field: 'frame_face' },
 ]

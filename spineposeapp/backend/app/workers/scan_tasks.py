@@ -179,7 +179,11 @@ def process_scan(self, scan_id: str) -> None:
             spine_back_metrics,
         )
         _update_scan(session, scan, progress_message="Running AI spine classification...")
-        metrics = merge_ai_classifications(metrics, frame_paths.get("side"))
+        metrics = merge_ai_classifications(
+            metrics,
+            frame_paths.get("side"),
+            frame_paths.get("back"),
+        )
         overall_risk = derive_overall_risk(metrics)
 
         twin_key = f"scans/{scan_id}/twin/keypoints.json"
