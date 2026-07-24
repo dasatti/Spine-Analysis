@@ -38,7 +38,7 @@ services:
       retries: 10
       start_period: 20s
     ports:
-      - "5432:5432"
+      - "5433:5432"
 
   redis:
     image: redis:7-alpine
@@ -52,7 +52,7 @@ services:
       timeout: 3s
       retries: 10
     ports:
-      - "6379:6379"
+      - "6380:6379"
 
   minio:
     image: minio/minio:latest
@@ -130,7 +130,7 @@ services:
       celery_worker:
         condition: service_started
     ports:
-      - "5555:5555"
+      - "5556:5555"
 
   db_backup:
     build:

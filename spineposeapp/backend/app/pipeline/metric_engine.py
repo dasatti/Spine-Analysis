@@ -479,22 +479,6 @@ def unavailable_scoliosis_metric(availability: str = AVAIL_NO_BACK) -> MetricVal
     return serialize_ai_classification(None, None, availability=availability)
 
 
-def compute_keypoint_scoliosis_metric(
-    spine_back_metrics: SpineBackMetrics | None,
-    pelvic_obliquity_mm: float | None = None,
-) -> MetricValue:
-    """Keypoint-based scoliosis screening from back and Adams pose landmarks."""
-    from app.pipeline.keypoint_scoliosis import estimate_keypoint_scoliosis
-
-    result = estimate_keypoint_scoliosis(spine_back_metrics, pelvic_obliquity_mm)
-    if result is None:
-        return serialize_ai_classification(None, None, availability=AVAIL_NO_SCOLIOSIS_VIEWS)
-    payload = serialize_ai_classification(result.class_name, result.confidence)
-    payload["composite_score"] = result.composite_score
-    payload["signals"] = result.signals
-    return payload
-
-
 def unavailable_kyphosis_metric(availability: str = AVAIL_NO_SIDE) -> MetricValue:
     return unavailable_ai_classification_metric(availability)
 
@@ -635,14 +619,10 @@ def compute_all(
     rotation = _safe_call(compute_vertebral_rotation, landmarks, depth_map, spine_back_metrics)
     adams = _safe_call(compute_adams_rib_hump, landmarks, depth_map, spine_back_metrics)
 
-    pelvic_obliquity_mm = pelvis_metrics.obliquity_mm if pelvis_metrics else None
-    keypoint_scoliosis = compute_keypoint_scoliosis_metric(spine_back_metrics, pelvic_obliquity_mm)
-
     return {
         "spinal_curves": {
             "thoracic_kyphosis_deg": _serialize_metric(thoracic),
             "lumbar_lordosis_deg": _serialize_metric(lumbar),
-            "keypoint_scoliosis": keypoint_scoliosis,
         },
         "pelvis_lower_body": {
             "pelvic_tilt_sagittal_deg": _serialize_metric(pelvic_tilt),
@@ -720,15 +700,6 @@ def derive_overall_risk(metrics: MetricsJson) -> str:
         if label == positive_label and confidence >= 0.75:
             elevated = True
         elif label == positive_label and confidence >= 0.5:
-            monitor = True
-
-    kp_scoliosis = metrics.get("spinal_curves", {}).get("keypoint_scoliosis", {})
-    if kp_scoliosis.get("availability") == AVAIL_AVAILABLE:
-        label = str(kp_scoliosis.get("value") or "").lower()
-        confidence = float(kp_scoliosis.get("confidence") or 0.0)
-        if label == "scoliosis" and confidence >= 0.75:
-            elevated = True
-        elif label == "scoliosis" and confidence >= 0.5:
             monitor = True
 
     if elevated:

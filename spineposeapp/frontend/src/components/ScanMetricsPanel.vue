@@ -65,7 +65,6 @@ const groups = computed(() => {
       items: [
         mk('spinal_curves', 'thoracic_kyphosis_deg', 'Thoracic Kyphosis'),
         mk('spinal_curves', 'lumbar_lordosis_deg', 'Lumbar Lordosis'),
-        mkCls('spinal_curves', 'keypoint_scoliosis', 'Scoliosis (Keypoint)', 'back'),
       ].filter(Boolean),
     },
     {

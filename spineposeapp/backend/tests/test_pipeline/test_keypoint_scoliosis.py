@@ -83,30 +83,3 @@ def test_pelvic_obliquity_contributes_to_score():
     with_pelvis = estimate_keypoint_scoliosis(back, pelvic_obliquity_mm=20.0)
     assert without is not None and with_pelvis is not None
     assert with_pelvis.confidence >= without.confidence
-
-
-def test_compute_keypoint_scoliosis_metric_unavailable():
-    from app.pipeline.metric_engine import (
-        AVAIL_NO_SCOLIOSIS_VIEWS,
-        compute_keypoint_scoliosis_metric,
-    )
-
-    payload = compute_keypoint_scoliosis_metric(None)
-    assert payload["availability"] == AVAIL_NO_SCOLIOSIS_VIEWS
-    assert payload["value"] is None
-
-
-def test_compute_keypoint_scoliosis_metric_available():
-    from app.pipeline.metric_engine import AVAIL_AVAILABLE, compute_keypoint_scoliosis_metric
-
-    back = SpineBackMetrics(
-        spine_drift_mm=None,
-        scapula_asymmetry_index=None,
-        vertebral_rotation_index=None,
-        adams_rib_hump_present=True,
-    )
-    payload = compute_keypoint_scoliosis_metric(back)
-    assert payload["availability"] == AVAIL_AVAILABLE
-    assert payload["value"] == SCOLIOSIS_LABEL
-    assert payload["metric_type"] == "classification"
-    assert "signals" in payload
